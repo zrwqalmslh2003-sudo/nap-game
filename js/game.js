@@ -16,6 +16,7 @@ function savePrefs(prefs) {
 
 const state = {
   screen: "home",
+  mode: "local",
   settings: { playersCount: 2, roundDuration: 60, totalRounds: 5, difficulty: "easy" },
   playerNames: ["", ""],
   players: [],            // [{id, name, totalScore}]
