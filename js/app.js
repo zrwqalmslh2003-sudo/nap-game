@@ -52,7 +52,7 @@
       '<div class="card stack center-text">' +
         '<h1 class="hero">اسم حيوان نبات<br>جماد بلاد</h1>' +
         '<p class="subtitle">اختبروا سرعتكم ومعرفتكم بالحروف، لعبة تناوب محلية لغاية 6 لاعبين</p>' +
-        '<button class="btn btn-primary" id="btnStart">ابدأ اللعبة</button> +
+        '<button class="btn btn-primary" id="btnStart">ابدأ اللعبة</button>' +
         '<button class="btn btn-secondary" id="btnOnline">لعب أونلاين</button>' +
         '<button class="btn btn-ghost" id="btnRules" style="align-self:center;">طريقة اللعب</button>' +
       '</div>';
