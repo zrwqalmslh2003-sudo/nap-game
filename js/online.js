@@ -229,6 +229,9 @@
     if (name.length < 2 || roomCode.length !== 5) return alert("تحقق من الاسم ورمز الغرفة");
     var r = await client.from("rooms").select("*").eq("code", roomCode).eq("status", "waiting").maybeSingle();
     if (r.error || !r.data) return fail("الغرفة غير موجودة أو بدأت بالفعل");
+    var count = await client.from("players").select("id", { count: "exact", head: true }).eq("room_id", r.data.id);
+    if (count.error) return fail(count.error.message);
+    if ((count.count || 0) >= 6) return fail("الغرفة ممتلئة (6 لاعبين كحد أقصى)");
     var meId = uuid();
     var p = await client.from("players").insert({ id: meId, room_id: r.data.id, name: name, total_score: 0, connected: true }).select().single();
     if (p.error) return fail(p.error.message);
@@ -269,7 +272,7 @@
   function renderResults() {
     var ranked = o.players.slice().sort(function (a, b) { return (b.total_score || 0) - (a.total_score || 0); });
     screenEl.innerHTML = '<div class="card"><div class="final-title"><span class="trophy">🏆</span><h2 style="font-family:Cairo,sans-serif;font-weight:800;">النتائج النهائية</h2></div>' + ranked.map(function (p, i) { return '<div class="leaderboard-row"><span class="rank-medal">' + (["🥇", "🥈", "🥉"][i] || (i + 1)) + '</span><span class="lb-name">' + esc(p.name) + '</span><span class="lb-score">' + (p.total_score || 0) + '</span></div>'; }).join("") + '<button class="btn btn-primary" id="orHome" style="margin-top:18px;">الرئيسية</button></div>';
-    document.getElementById("orHome").onclick = function () { cleanup(); state.mode = "local"; route("home"); };
+    document.getElementById("orHome").onclick = function () { clearOnlineSession(); cleanup(); state.mode = "local"; route("home"); };
   }
 
   window.Online = { render: function (screen) { if (screen === "onlineMenu") renderMenu(); else if (screen === "onlineCreate") renderCreate(); else if (screen === "onlineJoin") renderJoin(); else if (screen === "onlineWaiting") renderWaiting(); else if (screen === "onlinePlaying") renderPlaying(); else if (screen === "onlineReview") renderReview(); else if (screen === "onlineResults") { loadPlayers().then(renderResults); } } };
