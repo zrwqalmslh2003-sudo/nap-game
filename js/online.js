@@ -115,6 +115,12 @@
   }
   async function loadCurrentRound() {
     if (!o.room) return;
+    var rr = await client.from("rooms").select("current_round,status").eq("id", o.room.id).maybeSingle();
+    if (rr.error) return fail(rr.error.message);
+    if (rr.data) {
+      o.room = Object.assign({}, o.room, { current_round: rr.data.current_round, status: rr.data.status });
+      if (rr.data.status === "done") { clearTimers(); route("onlineResults"); return; }
+    }
     var r = await client.from("rounds").select("*").eq("room_id", o.room.id).eq("number", o.room.current_round).maybeSingle();
     if (r.error) return fail(r.error.message);
     if (!r.data) { setTimeout(loadCurrentRound, 500); return; }
