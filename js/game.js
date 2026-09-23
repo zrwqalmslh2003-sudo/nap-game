@@ -38,7 +38,10 @@ const state = {
 
 /* ---------------- game lifecycle ---------------- */
 
-function startGame() {
+async function startGame() {
+  if (typeof loadAvailableLetters === "function") {
+    try { await loadAvailableLetters(); } catch (e) { console.warn("letters manifest failed, using current pools"); }
+  }
   state.players = state.playerNames.slice(0, state.settings.playersCount).map(function (name, i) {
     return { id: i + 1, name: name.trim(), totalScore: 0 };
   });
@@ -70,6 +73,14 @@ function currentTurnDuration() {
 }
 
 async function startRound() {
+  if (!EASY_LETTERS.length && !HARD_LETTERS.length && typeof loadAvailableLetters === "function") {
+    try { await loadAvailableLetters(); } catch (e) {}
+  }
+  if (!EASY_LETTERS.length && !HARD_LETTERS.length) {
+    alert("لا توجد حروف متاحة");
+    goTo("home");
+    return;
+  }
   state.round.number += 1;
   const letter = getRandomLetter(state.round.lastLetter, state.settings.difficulty);
   state.round.letter = letter;
