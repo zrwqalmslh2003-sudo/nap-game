@@ -10,7 +10,7 @@
     room: null, me: null, players: [], round: null, answers: {},
     submitted: {}, presence: {}, scores: {}, roundHistory: [],
     objections: {}, accepting: {}, seenObjectionIds: {}, objectionQueue: [],
-    channels: [], timerId: null, nextRoundTimer: null, clockId: null, submitDebounce: null,
+    channels: [], timerId: null, nextRoundTimer: null, clockId: null, pollId: null, submitDebounce: null,
     closing: false, starting: false, submitting: false, lockedAt: 0,
     settings: { totalRounds: 3, roundDuration: 60 }
   };
@@ -41,7 +41,7 @@
     cleanup();
     if (window.goTo) window.goTo("onlineMenu");
   }
-  function clearTimers() { clearInterval(o.timerId); clearTimeout(o.nextRoundTimer); clearInterval(o.clockId); clearTimeout(o.submitDebounce); o.timerId = null; o.nextRoundTimer = null; o.clockId = null; o.submitDebounce = null; }
+  function clearTimers() { clearInterval(o.timerId); clearTimeout(o.nextRoundTimer); clearInterval(o.clockId); clearInterval(o.pollId); clearTimeout(o.submitDebounce); o.timerId = null; o.nextRoundTimer = null; o.clockId = null; o.pollId = null; o.submitDebounce = null; }
   function cleanup() {
     clearTimers();
     o.channels.forEach(function (ch) { client.removeChannel(ch); });
@@ -104,6 +104,20 @@
     roomChannel.subscribe(function (status) { if (status === "SUBSCRIBED") roomChannel.track({ player_id: o.me.id, typing: false, submitted: false }); });
     o.channels.push(roomChannel);
     loadPlayers();
+    clearInterval(o.pollId);
+    o.pollId = setInterval(async function () {
+      if (!o.room || o.room.status === "done") return;
+      try {
+        var rr = await client.from("rooms").select("current_round,status").eq("id", o.room.id).maybeSingle();
+        if (rr.error || !rr.data) return;
+        var roundChanged = rr.data.current_round !== o.room.current_round;
+        var statusChanged = rr.data.status !== o.room.status;
+        if (!roundChanged && !statusChanged) return;
+        o.room = Object.assign({}, o.room, rr.data);
+        if (rr.data.status === "done") { clearTimers(); route("onlineResults"); return; }
+        await loadCurrentRound();
+      } catch (e) { /* ignore, retry next tick */ }
+    }, 1500);
   }
 
   async function loadPlayers() {
@@ -187,7 +201,7 @@
     var nextNum = Number(o.room.current_round) + 1;
     var existing = await client.from("rounds").select("id").eq("room_id", o.room.id).eq("number", nextNum).maybeSingle();
     if (existing.error) return fail(existing.error.message);
-    if (existing.data) return;
+    if (existing.data) { await loadCurrentRound(); return; }
     if (!EASY_LETTERS.length && !HARD_LETTERS.length && typeof loadAvailableLetters === "function") {
       try { await loadAvailableLetters(); } catch (e) {}
     }
@@ -282,7 +296,7 @@
     o.starting = true;
     var existing = await client.from("rounds").select("id").eq("room_id", o.room.id).eq("number", 1).maybeSingle();
     if (existing.error) { o.starting = false; return fail(existing.error.message); }
-    if (existing.data) { o.starting = false; return; }
+    if (existing.data) { o.starting = false; await loadCurrentRound(); return; }
     if (!EASY_LETTERS.length && !HARD_LETTERS.length && typeof loadAvailableLetters === "function") {
       try { await loadAvailableLetters(); } catch (e) {}
     }
