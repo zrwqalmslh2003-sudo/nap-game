@@ -65,7 +65,10 @@
     if (r.data.status === "playing") loadCurrentRound();
   }
 
-  function setupRealtime() {
+  async function setupRealtime() {
+    if (typeof loadAvailableLetters === "function" && !EASY_LETTERS.length && !HARD_LETTERS.length) {
+      try { await loadAvailableLetters(); } catch (e) { console.warn("letters manifest failed", e); }
+    }
     syncClock();
     clearInterval(o.clockId);
     o.clockId = setInterval(syncClock, 30000);
@@ -179,7 +182,11 @@
     var existing = await client.from("rounds").select("id").eq("room_id", o.room.id).eq("number", nextNum).maybeSingle();
     if (existing.error) return fail(existing.error.message);
     if (existing.data) return;
+    if (!EASY_LETTERS.length && !HARD_LETTERS.length && typeof loadAvailableLetters === "function") {
+      try { await loadAvailableLetters(); } catch (e) {}
+    }
     var letter = getRandomLetter(o.round ? o.round.letter : null, "easy"), ends = new Date(serverNow() + Number(o.room.round_duration) * 1000).toISOString();
+    if (!letter) return fail("لا توجد حروف متاحة — تعذر تحميل قائمة الحروف");
     var ins = await client.from("rounds").insert({ room_id: o.room.id, number: nextNum, letter: letter, status: "active", started_at: new Date().toISOString(), ends_at: ends }).select().single();
     if (ins.error) {
       if (ins.error.code === "23505" || /duplicate key/i.test(ins.error.message || "")) { await loadCurrentRound(); return; }
@@ -270,7 +277,11 @@
     var existing = await client.from("rounds").select("id").eq("room_id", o.room.id).eq("number", 1).maybeSingle();
     if (existing.error) { o.starting = false; return fail(existing.error.message); }
     if (existing.data) { o.starting = false; return; }
+    if (!EASY_LETTERS.length && !HARD_LETTERS.length && typeof loadAvailableLetters === "function") {
+      try { await loadAvailableLetters(); } catch (e) {}
+    }
     var letter = getRandomLetter(null, "easy"), ends = new Date(serverNow() + Number(o.room.round_duration) * 1000).toISOString();
+    if (!letter) { o.starting = false; return fail("لا توجد حروف متاحة — تعذر تحميل قائمة الحروف"); }
     var r = await client.from("rounds").insert({ room_id: o.room.id, number: 1, letter: letter, status: "active", started_at: new Date().toISOString(), ends_at: ends }).select().single();
     if (r.error) {
       o.starting = false;
