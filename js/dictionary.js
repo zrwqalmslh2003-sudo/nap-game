@@ -19,13 +19,18 @@ function parseCsv(text) {
   text.split(/\r?\n/).forEach(function(line){
     line = line.trim();
     if (!line) return;
-    const i = line.indexOf(",");
-    if (i < 1) return;
-    const w = normalizeAnswer(line.slice(0, i));
-    const c = line.slice(i + 1).trim();
+    const parts = line.split(",");
+    if (parts.length < 2) return;
+    const w = normalizeAnswer(parts[0]);
+    const c = (parts[1] || "").trim();
+    const g = (parts[2] || "").trim();
     if (!w || !c) return;
     if (!out[w]) out[w] = new Set();
-    out[w].add(c);
+    if (c === "name" && (g === "male" || g === "female")) {
+      out[w].add("name_" + g);
+    } else {
+      out[w].add(c);
+    }
   });
   return out;
 }

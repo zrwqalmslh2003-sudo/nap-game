@@ -1,6 +1,6 @@
 const CATEGORIES = [
-  { key: "nameMale",   label: "اسم ولد", dictCat: "name" },
-  { key: "nameFemale", label: "اسم بنت", dictCat: "name" },
+  { key: "nameMale",   label: "اسم ولد", dictCat: "name_male" },
+  { key: "nameFemale", label: "اسم بنت", dictCat: "name_female" },
   { key: "animal",  label: "حيوان" },
   { key: "plant",   label: "نبات" },
   { key: "object",  label: "جماد" },
