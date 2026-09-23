@@ -174,6 +174,10 @@
     }
     var up = await client.from("rooms").update({ current_round: nextNum }).eq("id", o.room.id);
     if (up.error) return fail(up.error.message);
+    o.room = Object.assign({}, o.room, { current_round: nextNum, status: "playing" });
+    o.round = null;
+    o.lockedAt = 0;
+    await loadCurrentRound();
   }
 
   async function submitOnline() {
@@ -263,6 +267,7 @@
     var u = await client.from("rooms").update({ status: "playing", current_round: 1 }).eq("id", o.room.id).eq("status", "waiting").select("id").maybeSingle();
     if (u.error) { o.starting = false; return fail(u.error.message); }
     o.starting = false;
+    o.room = Object.assign({}, o.room, { status: "playing", current_round: 1 });
     if (!u.data) { loadCurrentRound(); return; }
   }
 
