@@ -116,8 +116,8 @@
     if (r.error) return fail(r.error.message);
     if (!r.data) { setTimeout(loadCurrentRound, 500); return; }
     if (o.round && o.round.id === r.data.id && o.round.status === r.data.status) {
-      if (o.round.status === "locked" && o.round.number < o.room.total_rounds && serverNow() - o.lockedAt > 8000) startNextRound();
-      else if (o.round.status === "locked") setTimeout(loadCurrentRound, 1000);
+      if (o.round.status === "locked" && o.round.number < o.room.total_rounds && state.screen === "onlineReview" && serverNow() - o.lockedAt > 65000) startNextRound();
+      else if (o.round.status === "locked") setTimeout(loadCurrentRound, 2000);
       return;
     }
     o.round = r.data; o.answers = {}; o.submitted = {}; o.scores = {}; o.closing = false; o.submitting = false;
@@ -165,10 +165,15 @@
       await client.from("rooms").update({ status: "done" }).eq("id", o.room.id);
     } else {
       route("onlineReview");
-      startNextRound();
+      clearTimeout(o.nextRoundTimer);
+      o.nextRoundTimer = setTimeout(function () {
+        if (state.screen === "onlineReview" && o.round && o.round.status === "locked") startNextRound();
+      }, 60000);
     }
   }
   async function startNextRound() {
+    clearTimeout(o.nextRoundTimer);
+    o.nextRoundTimer = null;
     if (!o.room || o.room.status === "done") return;
     var nextNum = Number(o.room.current_round) + 1;
     var existing = await client.from("rounds").select("id").eq("room_id", o.room.id).eq("number", nextNum).maybeSingle();
@@ -360,10 +365,18 @@
   function renderReview() {
     if (!o.round) return;
     var rows = o.players.map(function (p) { var sc = o.scores[p.id] || {}; return '<div class="review-player"><div class="review-player-name"><span>' + esc(p.name) + '</span><span>' + roundTotalForPlayer(sc) + '</span></div>' + CATEGORIES.map(function (c) { var cell = sc[c.key] || { value: "", points: 0, status: "empty" }; var obj = findObjection(cell.value, c.key, p.id); var flag = cell.status === "not_in_dict" && p.id !== o.me.id && !obj ? '<button class="btn btn-ghost" style="padding:2px 8px;margin-inline-start:8px;" data-object-category="' + esc(c.key) + '" data-object-owner="' + esc(p.id) + '" data-object-word="' + esc(cell.value) + '">🚩</button>' : ''; var cls = cell.points === 10 ? "unique" : cell.points === 5 ? "dup" : "zero"; return '<div class="review-row"><span class="cat">' + c.label + '</span><span class="ans">' + esc(cell.value || "—") + flag + '</span><span class="pts ' + cls + '">+' + cell.points + '</span></div>'; }).join("") + '</div>'; }).join("");
-    screenEl.innerHTML = '<div class="card"><p class="center-text muted">نتائج الجولة — الحرف <strong style="color:var(--accent-deep);font-size:20px;">' + esc(o.round.letter) + '</strong></p>' + rows + '<p class="center-text muted">الجولة التالية تبدأ تلقائيًا بعد قليل…</p></div>';
+    var nextAction = o.round.number < o.room.total_rounds ? (isHost() ? '<button class="btn btn-primary" id="oNextRound" style="margin-top:16px;">الجولة التالية</button>' : '<p class="center-text muted" style="margin-top:16px;">بانتظار المضيف لبدء الجولة التالية…</p>') : '<p class="center-text muted" style="margin-top:16px;">انتهت الجولات…</p>';
+    screenEl.innerHTML = '<div class="card"><p class="center-text muted">نتائج الجولة — الحرف <strong style="color:var(--accent-deep);font-size:20px;">' + esc(o.round.letter) + '</strong></p>' + rows + nextAction + '</div>';
     Array.prototype.forEach.call(screenEl.querySelectorAll("[data-object-category]"), function (button) {
       button.onclick = function () { raiseObjection({ value: button.dataset.objectWord, category: button.dataset.objectCategory }, { id: button.dataset.objectOwner }); };
     });
+    var nextBtn = document.getElementById("oNextRound");
+    if (nextBtn) nextBtn.onclick = function () {
+      nextBtn.disabled = true;
+      clearTimeout(o.nextRoundTimer);
+      o.nextRoundTimer = null;
+      startNextRound();
+    };
   }
   function renderResults() {
     var ranked = o.players.slice().sort(function (a, b) { return (b.total_score || 0) - (a.total_score || 0); });
