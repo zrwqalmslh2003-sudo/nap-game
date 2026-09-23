@@ -9,6 +9,7 @@
   var o = {
     room: null, me: null, players: [], round: null, answers: {},
     submitted: {}, presence: {}, scores: {}, roundHistory: [],
+    objections: {}, accepting: {}, seenObjectionIds: {}, objectionQueue: [],
     channels: [], timerId: null, nextRoundTimer: null, clockId: null, submitDebounce: null,
     closing: false, starting: false, submitting: false, lockedAt: 0,
     settings: { totalRounds: 3, roundDuration: 60 }
@@ -45,7 +46,7 @@
     clearTimers();
     o.channels.forEach(function (ch) { client.removeChannel(ch); });
     o.channels = [];
-    o.room = o.me = o.round = null; o.players = []; o.answers = {}; o.submitted = {}; o.presence = {}; o.scores = {}; o.roundHistory = []; o.closing = false;
+    o.room = o.me = o.round = null; o.players = []; o.answers = {}; o.submitted = {}; o.presence = {}; o.scores = {}; o.roundHistory = []; o.objections = {}; o.accepting = {}; o.seenObjectionIds = {}; o.objectionQueue = []; o.closing = false;
   }
   function route(screen) { state.mode = "online"; window.goTo(screen); }
   function inputValue(id) { var el = document.getElementById(id); return el ? el.value : ""; }
@@ -85,6 +86,13 @@
       updatePlayersStrip();
       clearTimeout(o.submitDebounce);
       o.submitDebounce = setTimeout(function () { if (allSubmitted()) closeRound(); }, 300);
+    }).on("postgres_changes", { event: "INSERT", schema: "public", table: "pending_words" }, function (p) {
+      if (!p.new || !o.room || p.new.room_id !== o.room.id) return;
+      if (o.seenObjectionIds[p.new.id]) return;
+      o.seenObjectionIds[p.new.id] = true;
+      o.objections[p.new.id] = p.new;
+      if (isHost()) { o.objectionQueue.push(p.new); showNextObjection(); }
+      renderReview();
     }).on("presence", { event: "sync" }, function () {
       var stateByKey = roomChannel.presenceState(), next = {};
       Object.keys(stateByKey).forEach(function (key) { var last = stateByKey[key][stateByKey[key].length - 1]; if (last) next[key] = last; });
@@ -277,9 +285,85 @@
     CATEGORIES.forEach(function (c) { var el = document.getElementById("of_" + c.key); el.oninput = trackTyping; });
     document.getElementById("ofFinish").onclick = submitOnline; updatePlayersStrip(); startOnlineTimer();
   }
+  function categoryLabel(key) {
+    var c = CATEGORIES.filter(function (x) { return x.key === key; })[0];
+    return c ? c.label : key;
+  }
+  function findObjection(word, category, ownerId) {
+    var found = null;
+    Object.keys(o.objections).some(function (key) {
+      var item = o.objections[key];
+      if (item && item.word === word && item.category === category && item.owner_id === ownerId) { found = item; return true; }
+      return false;
+    });
+    return found;
+  }
+  async function raiseObjection(cell, ownerPlayer) {
+    if (!o.round || !ownerPlayer || ownerPlayer.id === o.me.id || findObjection(cell.value, cell.category, ownerPlayer.id)) return;
+    var localKey = "local:" + cell.category + ":" + ownerPlayer.id + ":" + cell.value;
+    o.objections[localKey] = { word: cell.value, category: cell.category, owner_id: ownerPlayer.id, raised_by: o.me.id, busy: true };
+    renderReview();
+    var r = await client.from("pending_words").insert({ room_id: o.room.id, round_id: o.round.id, letter: o.round.letter, word: cell.value, category: cell.category, owner_id: ownerPlayer.id, raised_by: o.me.id }).select().single();
+    delete o.objections[localKey];
+    if (r.error) {
+      if (r.error.code === "23505" || /duplicate key/i.test(r.error.message || "")) { renderReview(); return; }
+      renderReview(); alert(r.error.message || "تعذر تسجيل الاعتراض"); return;
+    }
+    o.objections[r.data.id] = r.data;
+    o.seenObjectionIds[r.data.id] = true;
+    renderReview();
+    if (isHost()) { o.objectionQueue.push(r.data); showNextObjection(); }
+  }
+  function showNextObjection() {
+    if (!isHost() || document.getElementById("objectionPopup")) return;
+    var pending = o.objectionQueue.filter(function (item) { return item && !item.host_decision; })[0];
+    if (!pending) return;
+    o.accepting[pending.id] = true;
+    var popup = document.createElement("div");
+    popup.id = "objectionPopup";
+    popup.style.cssText = "position:fixed;left:16px;right:16px;bottom:16px;z-index:100;background:var(--card,#fff);border:2px solid var(--accent-deep,#a66b2c);border-radius:14px;padding:16px;box-shadow:0 12px 36px rgba(0,0,0,.24);";
+    popup.innerHTML = '<strong>اعتراض من ' + esc(playerName(pending.raised_by)) + ': ' + esc(pending.word) + ' في ' + esc(categoryLabel(pending.category)) + '</strong><div style="display:flex;gap:8px;margin-top:12px;"><button class="btn btn-primary" id="objectionAccept">قبول (+10)</button><button class="btn btn-secondary" id="objectionReject">رفض</button></div>';
+    document.body.appendChild(popup);
+    document.getElementById("objectionAccept").onclick = function () { decideObjection(pending, "accepted"); };
+    document.getElementById("objectionReject").onclick = function () { decideObjection(pending, "rejected"); };
+  }
+  async function decideObjection(pending, decision) {
+    if (!isHost() || !pending || !o.accepting[pending.id]) return;
+    var result = await client.from("pending_words").update({ host_decision: decision, decided_at: new Date().toISOString() }).eq("id", pending.id).is("host_decision", null).select().maybeSingle();
+    if (result.error) { delete o.accepting[pending.id]; alert(result.error.message); return; }
+    if (!result.data) { delete o.accepting[pending.id]; closeObjectionPopup(pending.id); return; }
+    pending.host_decision = decision;
+    if (decision === "accepted") {
+      var owner = o.players.filter(function (p) { return p.id === pending.owner_id; })[0];
+      if (owner) {
+        var nextTotal = (owner.total_score || 0) + 10;
+        var pu = await client.from("players").update({ total_score: nextTotal }).eq("id", owner.id);
+        if (pu.error) { delete o.accepting[pending.id]; alert(pu.error.message); return; }
+        owner.total_score = nextTotal;
+        if (o.scores[owner.id] && o.scores[owner.id][pending.category]) {
+          o.scores[owner.id][pending.category].points = 10;
+          o.scores[owner.id][pending.category].status = "unique";
+        }
+      }
+    }
+    delete o.accepting[pending.id];
+    closeObjectionPopup(pending.id);
+    o.objectionQueue = o.objectionQueue.filter(function (item) { return item.id !== pending.id; });
+    renderReview();
+    showNextObjection();
+  }
+  function closeObjectionPopup(id) {
+    var popup = document.getElementById("objectionPopup");
+    if (popup) popup.remove();
+    if (o.objections[id]) o.objections[id].host_decision = o.objections[id].host_decision || null;
+  }
   function renderReview() {
-    var rows = o.players.map(function (p) { var sc = o.scores[p.id] || {}; return '<div class="review-player"><div class="review-player-name"><span>' + esc(p.name) + '</span><span>' + roundTotalForPlayer(sc) + '</span></div>' + CATEGORIES.map(function (c) { var cell = sc[c.key] || { value: "", points: 0, status: "empty" }; var cls = cell.points === 10 ? "unique" : cell.points === 5 ? "dup" : "zero"; return '<div class="review-row"><span class="cat">' + c.label + '</span><span class="ans">' + esc(cell.value || "—") + '</span><span class="pts ' + cls + '">+' + cell.points + '</span></div>'; }).join("") + '</div>'; }).join("");
+    if (!o.round) return;
+    var rows = o.players.map(function (p) { var sc = o.scores[p.id] || {}; return '<div class="review-player"><div class="review-player-name"><span>' + esc(p.name) + '</span><span>' + roundTotalForPlayer(sc) + '</span></div>' + CATEGORIES.map(function (c) { var cell = sc[c.key] || { value: "", points: 0, status: "empty" }; var obj = findObjection(cell.value, c.key, p.id); var flag = cell.status === "not_in_dict" && p.id !== o.me.id && !obj ? '<button class="btn btn-ghost" style="padding:2px 8px;margin-inline-start:8px;" data-object-category="' + esc(c.key) + '" data-object-owner="' + esc(p.id) + '" data-object-word="' + esc(cell.value) + '">🚩</button>' : ''; var cls = cell.points === 10 ? "unique" : cell.points === 5 ? "dup" : "zero"; return '<div class="review-row"><span class="cat">' + c.label + '</span><span class="ans">' + esc(cell.value || "—") + flag + '</span><span class="pts ' + cls + '">+' + cell.points + '</span></div>'; }).join("") + '</div>'; }).join("");
     screenEl.innerHTML = '<div class="card"><p class="center-text muted">نتائج الجولة — الحرف <strong style="color:var(--accent-deep);font-size:20px;">' + esc(o.round.letter) + '</strong></p>' + rows + '<p class="center-text muted">الجولة التالية تبدأ تلقائيًا بعد قليل…</p></div>';
+    Array.prototype.forEach.call(screenEl.querySelectorAll("[data-object-category]"), function (button) {
+      button.onclick = function () { raiseObjection({ value: button.dataset.objectWord, category: button.dataset.objectCategory }, { id: button.dataset.objectOwner }); };
+    });
   }
   function renderResults() {
     var ranked = o.players.slice().sort(function (a, b) { return (b.total_score || 0) - (a.total_score || 0); });
