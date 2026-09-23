@@ -145,7 +145,7 @@
     o.closing = true; clearInterval(o.timerId); lockOnlineForm();
     var u = await client.from("rounds").update({ status: "locked" }).eq("id", o.round.id).eq("status", "active").select("id").maybeSingle();
     if (u.error) return fail(u.error.message);
-    if (!u.data) return;
+    if (!u.data) { await loadCurrentRound(); return; }
     await loadRoundScores();
     var totals = {};
     o.players.forEach(function (p) { var points = roundTotalForPlayer(o.scores[p.id] || {}); totals[p.id] = (p.total_score || 0) + points; });
@@ -168,7 +168,10 @@
     if (existing.data) return;
     var letter = getRandomLetter(o.round ? o.round.letter : null, "easy"), ends = new Date(serverNow() + Number(o.room.round_duration) * 1000).toISOString();
     var ins = await client.from("rounds").insert({ room_id: o.room.id, number: nextNum, letter: letter, status: "active", started_at: new Date().toISOString(), ends_at: ends }).select().single();
-    if (ins.error) return fail(ins.error.message);
+    if (ins.error) {
+      if (ins.error.code === "23505" || /duplicate key/i.test(ins.error.message || "")) { await loadCurrentRound(); return; }
+      return fail(ins.error.message);
+    }
     var up = await client.from("rooms").update({ current_round: nextNum }).eq("id", o.room.id);
     if (up.error) return fail(up.error.message);
   }
@@ -252,7 +255,11 @@
     if (existing.data) { o.starting = false; return; }
     var letter = getRandomLetter(null, "easy"), ends = new Date(serverNow() + Number(o.room.round_duration) * 1000).toISOString();
     var r = await client.from("rounds").insert({ room_id: o.room.id, number: 1, letter: letter, status: "active", started_at: new Date().toISOString(), ends_at: ends }).select().single();
-    if (r.error) { o.starting = false; return fail(r.error.message); }
+    if (r.error) {
+      o.starting = false;
+      if (r.error.code === "23505" || /duplicate key/i.test(r.error.message || "")) { await loadCurrentRound(); return; }
+      return fail(r.error.message);
+    }
     var u = await client.from("rooms").update({ status: "playing", current_round: 1 }).eq("id", o.room.id).eq("status", "waiting").select("id").maybeSingle();
     if (u.error) { o.starting = false; return fail(u.error.message); }
     o.starting = false;
