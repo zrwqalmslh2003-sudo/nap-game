@@ -50,9 +50,9 @@
   }
   function route(screen) { state.mode = "online"; window.goTo(screen); }
   function inputValue(id) { var el = document.getElementById(id); return el ? el.value : ""; }
-  function saveOnlineSession() { try { localStorage.setItem("nap.online.me", JSON.stringify({ id: o.me.id, name: o.me.name, roomCode: o.room.code })); } catch (e) {} }
-  function clearOnlineSession() { try { localStorage.removeItem("nap.online.me"); } catch (e) {} }
-  function readOnlineSession() { try { return JSON.parse(localStorage.getItem("nap.online.me") || "null"); } catch (e) { return null; } }
+  function saveOnlineSession() { try { sessionStorage.setItem("nap.online.me", JSON.stringify({ id: o.me.id, name: o.me.name, roomCode: o.room.code })); } catch (e) {} }
+  function clearOnlineSession() { try { sessionStorage.removeItem("nap.online.me"); } catch (e) {} }
+  function readOnlineSession() { try { return JSON.parse(sessionStorage.getItem("nap.online.me") || "null"); } catch (e) { return null; } }
   async function resumeRoom() {
     var saved = readOnlineSession();
     if (!saved || !saved.roomCode || !saved.id) return;
@@ -428,7 +428,7 @@
   }
   function renderReview() {
     if (!o.round) return;
-    var rows = o.players.map(function (p) { var sc = o.scores[p.id] || {}; return '<div class="review-player"><div class="review-player-name"><span>' + esc(p.name) + '</span><span>' + roundTotalForPlayer(sc) + '</span></div>' + CATEGORIES.map(function (c) { var cell = sc[c.key] || { value: "", points: 0, status: "empty" }; var obj = findObjection(cell.value, c.key, p.id); var flag = cell.status === "not_in_dict" && p.id === o.me.id && !obj ? '<button class="btn btn-secondary" style="padding:4px 12px;font-size:13px;margin-inline-start:8px;border-radius:8px;" data-object-category="' + esc(c.key) + '" data-object-owner="' + esc(p.id) + '" data-object-word="' + esc(cell.value) + '">اعتراض</button>' : ''; var cls = cell.points === 10 ? "unique" : cell.points === 5 ? "dup" : "zero"; return '<div class="review-row"><span class="cat">' + c.label + '</span><span class="ans">' + esc(cell.value || "—") + flag + '</span><span class="pts ' + cls + '">+' + cell.points + '</span></div>'; }).join("") + '</div>'; }).join("");
+    var rows = o.players.map(function (p) { var sc = o.scores[p.id] || {}; return '<div class="review-player"><div class="review-player-name"><span>' + esc(p.name) + '</span><span>' + roundTotalForPlayer(sc) + '</span></div>' + CATEGORIES.map(function (c) { var cell = sc[c.key] || { value: "", points: 0, status: "empty" }; var obj = findObjection(cell.value, c.key, p.id); var flag = cell.status === "not_in_dict" && p.id === o.me.id && !obj ? '<button class="btn btn-secondary" style="padding:4px 12px;font-size:13px;margin-inline-start:8px;border-radius:8px;width:auto;display:inline-flex;" data-object-category="' + esc(c.key) + '" data-object-owner="' + esc(p.id) + '" data-object-word="' + esc(cell.value) + '">اعتراض</button>' : ''; var cls = cell.points === 10 ? "unique" : cell.points === 5 ? "dup" : "zero"; return '<div class="review-row"><span class="cat">' + c.label + '</span><span class="ans">' + esc(cell.value || "—") + flag + '</span><span class="pts ' + cls + '">+' + cell.points + '</span></div>'; }).join("") + '</div>'; }).join("");
     var nextAction = o.round.number < o.room.total_rounds ? (isHost() ? '<button class="btn btn-primary" id="oNextRound" style="margin-top:16px;">الجولة التالية</button>' : '<p class="center-text muted" style="margin-top:16px;">بانتظار المضيف لبدء الجولة التالية…</p>') : '<p class="center-text muted" style="margin-top:16px;">انتهت الجولات…</p>';
     screenEl.innerHTML = '<div class="card"><p class="center-text muted">نتائج الجولة — الحرف <strong style="color:var(--accent-deep);font-size:20px;">' + esc(o.round.letter) + '</strong></p>' + rows + nextAction + '</div>';
     Array.prototype.forEach.call(screenEl.querySelectorAll("[data-object-category]"), function (button) {
