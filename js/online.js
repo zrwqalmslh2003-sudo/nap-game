@@ -110,6 +110,20 @@
       try {
         var rr = await client.from("rooms").select("current_round,status").eq("id", o.room.id).maybeSingle();
         if (rr.error || !rr.data) return;
+        if (state.screen === "onlineReview" && isHost() && o.round) {
+          try {
+            var pq = await client.from("pending_words").select("*").eq("room_id", o.room.id).eq("round_id", o.round.id).is("host_decision", null);
+            if (!pq.error && pq.data) {
+              pq.data.forEach(function (row) {
+                if (o.seenObjectionIds[row.id]) return;
+                o.seenObjectionIds[row.id] = true;
+                o.objections[row.id] = row;
+                o.objectionQueue.push(row);
+              });
+              if (pq.data.length) showNextObjection();
+            }
+          } catch (e) {}
+        }
         var roundChanged = rr.data.current_round !== o.room.current_round;
         var statusChanged = rr.data.status !== o.room.status;
         if (!roundChanged && !statusChanged) return;
@@ -338,20 +352,35 @@
     });
     return found;
   }
+  function objectionButton(cell, ownerPlayer) {
+    var buttons = screenEl.querySelectorAll("[data-object-category]");
+    for (var i = 0; i < buttons.length; i++) {
+      var button = buttons[i];
+      if (button.dataset.objectCategory === cell.category && button.dataset.objectOwner === String(ownerPlayer.id) && button.dataset.objectWord === cell.value) return button;
+    }
+    return null;
+  }
+  function restoreObjectionButton(button) {
+    if (!button) return;
+    button.disabled = false;
+    button.textContent = "اعتراض";
+  }
   async function raiseObjection(cell, ownerPlayer) {
-    if (!o.round || !ownerPlayer || ownerPlayer.id === o.me.id || findObjection(cell.value, cell.category, ownerPlayer.id)) return;
+    if (!o.round || !ownerPlayer || ownerPlayer.id !== o.me.id || findObjection(cell.value, cell.category, ownerPlayer.id)) return;
+    var button = objectionButton(cell, ownerPlayer);
+    if (button) { button.disabled = true; button.textContent = "جار الإرسال…"; }
     var localKey = "local:" + cell.category + ":" + ownerPlayer.id + ":" + cell.value;
     o.objections[localKey] = { word: cell.value, category: cell.category, owner_id: ownerPlayer.id, raised_by: o.me.id, busy: true };
-    renderReview();
     var r = await client.from("pending_words").insert({ room_id: o.room.id, round_id: o.round.id, letter: o.round.letter, word: cell.value, category: cell.category, owner_id: ownerPlayer.id, raised_by: o.me.id }).select().single();
     delete o.objections[localKey];
     if (r.error) {
+      restoreObjectionButton(button);
       if (r.error.code === "23505" || /duplicate key/i.test(r.error.message || "")) { renderReview(); return; }
       renderReview(); alert(r.error.message || "تعذر تسجيل الاعتراض"); return;
     }
     o.objections[r.data.id] = r.data;
     o.seenObjectionIds[r.data.id] = true;
-    renderReview();
+    if (button) { button.disabled = true; button.textContent = "أُرسل ✓"; }
     if (isHost()) { o.objectionQueue.push(r.data); showNextObjection(); }
   }
   function showNextObjection() {
@@ -399,7 +428,7 @@
   }
   function renderReview() {
     if (!o.round) return;
-    var rows = o.players.map(function (p) { var sc = o.scores[p.id] || {}; return '<div class="review-player"><div class="review-player-name"><span>' + esc(p.name) + '</span><span>' + roundTotalForPlayer(sc) + '</span></div>' + CATEGORIES.map(function (c) { var cell = sc[c.key] || { value: "", points: 0, status: "empty" }; var obj = findObjection(cell.value, c.key, p.id); var flag = cell.status === "not_in_dict" && p.id !== o.me.id && !obj ? '<button class="btn btn-ghost" style="padding:2px 8px;margin-inline-start:8px;" data-object-category="' + esc(c.key) + '" data-object-owner="' + esc(p.id) + '" data-object-word="' + esc(cell.value) + '">🚩</button>' : ''; var cls = cell.points === 10 ? "unique" : cell.points === 5 ? "dup" : "zero"; return '<div class="review-row"><span class="cat">' + c.label + '</span><span class="ans">' + esc(cell.value || "—") + flag + '</span><span class="pts ' + cls + '">+' + cell.points + '</span></div>'; }).join("") + '</div>'; }).join("");
+    var rows = o.players.map(function (p) { var sc = o.scores[p.id] || {}; return '<div class="review-player"><div class="review-player-name"><span>' + esc(p.name) + '</span><span>' + roundTotalForPlayer(sc) + '</span></div>' + CATEGORIES.map(function (c) { var cell = sc[c.key] || { value: "", points: 0, status: "empty" }; var obj = findObjection(cell.value, c.key, p.id); var flag = cell.status === "not_in_dict" && p.id === o.me.id && !obj ? '<button class="btn btn-secondary" style="padding:4px 12px;font-size:13px;margin-inline-start:8px;border-radius:8px;" data-object-category="' + esc(c.key) + '" data-object-owner="' + esc(p.id) + '" data-object-word="' + esc(cell.value) + '">اعتراض</button>' : ''; var cls = cell.points === 10 ? "unique" : cell.points === 5 ? "dup" : "zero"; return '<div class="review-row"><span class="cat">' + c.label + '</span><span class="ans">' + esc(cell.value || "—") + flag + '</span><span class="pts ' + cls + '">+' + cell.points + '</span></div>'; }).join("") + '</div>'; }).join("");
     var nextAction = o.round.number < o.room.total_rounds ? (isHost() ? '<button class="btn btn-primary" id="oNextRound" style="margin-top:16px;">الجولة التالية</button>' : '<p class="center-text muted" style="margin-top:16px;">بانتظار المضيف لبدء الجولة التالية…</p>') : '<p class="center-text muted" style="margin-top:16px;">انتهت الجولات…</p>';
     screenEl.innerHTML = '<div class="card"><p class="center-text muted">نتائج الجولة — الحرف <strong style="color:var(--accent-deep);font-size:20px;">' + esc(o.round.letter) + '</strong></p>' + rows + nextAction + '</div>';
     Array.prototype.forEach.call(screenEl.querySelectorAll("[data-object-category]"), function (button) {
