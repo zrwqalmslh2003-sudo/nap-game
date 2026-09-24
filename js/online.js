@@ -144,6 +144,8 @@
       return;
     }
     o.round = r.data; o.answers = {}; o.submitted = {}; o.scores = {}; o.closing = false; o.submitting = false;
+    var dict = await loadDictionary(o.round.letter);
+    if (!dict) return fail("تعذر تحميل قاموس هذا الحرف؛ لم تبدأ الجولة لتجنب قبول إجابات غير متحقق منها");
     if (o.round.status === "active") { route("onlinePlaying"); startOnlineTimer(); }
     else if (o.round.status === "locked") {
       o.lockedAt = serverNow();
@@ -153,6 +155,8 @@
   }
   async function loadRoundScores() {
     if (!o.round) return;
+    var dict = await loadDictionary(o.round.letter);
+    if (!dict) return fail("تعذر تحميل القاموس؛ لا يمكن حساب نتائج الجولة بأمان");
     var a = await client.from("answers").select("*").eq("round_id", o.round.id);
     if (a.error) return fail(a.error.message);
     var byPlayer = {};

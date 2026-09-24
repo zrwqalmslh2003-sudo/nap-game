@@ -17,6 +17,8 @@ grep -q '23505' js/online.js
 grep -q 'pending_words' js/online.js
 grep -q 'oNextRound' js/online.js
 grep -q '60000' js/online.js
+grep -q 'var dict = await loadDictionary(o.round.letter)' js/online.js
+grep -q 'لا يمكن حساب نتائج الجولة بأمان' js/online.js
 
 echo "online-preflight: PASS"
 echo "- JavaScript syntax: PASS"
@@ -26,3 +28,4 @@ echo "- polling fallback: PASS"
 echo "- duplicate-round recovery: PASS"
 echo "- objection flow hooks: PASS"
 echo "- manual transition and 60s safety net: PASS"
+echo "- strict online dictionary loading: PASS"
