@@ -11,7 +11,7 @@
     submitted: {}, presence: {}, scores: {}, roundHistory: [],
     objections: {}, accepting: {}, seenObjectionIds: {}, objectionQueue: [],
     channels: [], timerId: null, nextRoundTimer: null, clockId: null, pollId: null, submitDebounce: null, typingThrottle: null,
-    closing: false, starting: false, submitting: false, lockedAt: 0,
+    closing: false, starting: false, submitting: false, joining: false, creating: false, lockedAt: 0,
     settings: { totalRounds: 3, roundDuration: 60 }
   };
 
@@ -46,7 +46,7 @@
     clearTimers();
     o.channels.forEach(function (ch) { client.removeChannel(ch); });
     o.channels = [];
-    o.room = o.me = o.round = null; o.players = []; o.answers = {}; o.submitted = {}; o.presence = {}; o.scores = {}; o.roundHistory = []; o.objections = {}; o.accepting = {}; o.seenObjectionIds = {}; o.objectionQueue = []; o.closing = false;
+    o.room = o.me = o.round = null; o.players = []; o.answers = {}; o.submitted = {}; o.presence = {}; o.scores = {}; o.roundHistory = []; o.objections = {}; o.accepting = {}; o.seenObjectionIds = {}; o.objectionQueue = []; o.closing = false; o.joining = false; o.creating = false;
   }
   function route(screen) { state.mode = "online"; window.goTo(screen); }
   function inputValue(id) { var el = document.getElementById(id); return el ? el.value : ""; }
@@ -308,12 +308,16 @@
     document.getElementById("ocGo").onclick = createRoom; document.getElementById("ocBack").onclick = function () { route("onlineMenu"); };
   }
   async function createRoom() {
+    if (o.creating) return;
     var name = inputValue("ocName").trim(); if (name.length < 2) return alert("اكتب اسمًا من حرفين على الأقل");
-    cleanup(); var meId = uuid(), roomId = uuid(), roomCode = code();
+    cleanup();
+    o.creating = true;
+    var goButton = document.getElementById("ocGo"); if (goButton) goButton.disabled = true;
+    var meId = uuid(), roomId = uuid(), roomCode = code();
     var r = await client.from("rooms").insert({ id: roomId, code: roomCode, host_id: meId, status: "waiting", total_rounds: o.settings.totalRounds, round_duration: o.settings.roundDuration, current_round: 0 }).select().single();
-    if (r.error) return fail(r.error.message);
+    if (r.error) { o.creating = false; if (goButton) goButton.disabled = false; return fail(r.error.message); }
     var p = await client.from("players").insert({ id: meId, room_id: roomId, name: name, total_score: 0, connected: true }).select().single();
-    if (p.error) return fail(p.error.message);
+    if (p.error) { o.creating = false; if (goButton) goButton.disabled = false; return fail(p.error.message); }
     o.room = r.data; o.me = p.data; saveOnlineSession(); setupRealtime(); route("onlineWaiting");
   }
   function renderJoin() {
@@ -321,16 +325,19 @@
     document.getElementById("ojGo").onclick = joinRoom; document.getElementById("ojBack").onclick = function () { route("onlineMenu"); };
   }
   async function joinRoom() {
+    if (o.joining) return;
     var name = inputValue("ojName").trim(), roomCode = inputValue("ojCode").trim().toUpperCase();
     if (name.length < 2 || roomCode.length !== 5) return alert("تحقق من الاسم ورمز الغرفة");
+    o.joining = true;
+    var goButton = document.getElementById("ojGo"); if (goButton) goButton.disabled = true;
     var r = await client.from("rooms").select("*").eq("code", roomCode).eq("status", "waiting").maybeSingle();
-    if (r.error || !r.data) return fail("الغرفة غير موجودة أو بدأت بالفعل");
+    if (r.error || !r.data) { o.joining = false; if (goButton) goButton.disabled = false; return fail("الغرفة غير موجودة أو بدأت بالفعل"); }
     var count = await client.from("players").select("id", { count: "exact", head: true }).eq("room_id", r.data.id);
-    if (count.error) return fail(count.error.message);
-    if ((count.count || 0) >= 6) return fail("الغرفة ممتلئة (6 لاعبين كحد أقصى)");
+    if (count.error) { o.joining = false; if (goButton) goButton.disabled = false; return fail(count.error.message); }
+    if ((count.count || 0) >= 6) { o.joining = false; if (goButton) goButton.disabled = false; return fail("الغرفة ممتلئة (6 لاعبين كحد أقصى)"); }
     var meId = uuid();
     var p = await client.from("players").insert({ id: meId, room_id: r.data.id, name: name, total_score: 0, connected: true }).select().single();
-    if (p.error) return fail(p.error.message);
+    if (p.error) { o.joining = false; if (goButton) goButton.disabled = false; return fail(p.error.message); }
     o.room = r.data; o.me = p.data; saveOnlineSession(); setupRealtime(); route("onlineWaiting");
   }
   function renderWaiting() {
