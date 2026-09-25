@@ -5,6 +5,7 @@
   var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtdXR6eW5peGN4bXNvdGVpZHllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwOTc0OTksImV4cCI6MjEwNTY3MzQ5OX0.5m9y6pFyuojOFkBmoThQs3McRyRYCy_lMosCxsKdERk";
 
   var client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  var MAX_ONLINE_PLAYERS = 20;
   var screenEl = document.getElementById("screen");
   var o = {
     room: null, me: null, players: [], round: null, answers: {},
@@ -334,7 +335,7 @@
     if (r.error || !r.data) { o.joining = false; if (goButton) goButton.disabled = false; return fail("الغرفة غير موجودة أو بدأت بالفعل"); }
     var count = await client.from("players").select("id", { count: "exact", head: true }).eq("room_id", r.data.id);
     if (count.error) { o.joining = false; if (goButton) goButton.disabled = false; return fail(count.error.message); }
-    if ((count.count || 0) >= 6) { o.joining = false; if (goButton) goButton.disabled = false; return fail("الغرفة ممتلئة (6 لاعبين كحد أقصى)"); }
+    if ((count.count || 0) >= MAX_ONLINE_PLAYERS) { o.joining = false; if (goButton) goButton.disabled = false; return fail("الغرفة ممتلئة (20 لاعبًا كحد أقصى)"); }
     var meId = uuid();
     var p = await client.from("players").insert({ id: meId, room_id: r.data.id, name: name, total_score: 0, connected: true }).select().single();
     if (p.error) { o.joining = false; if (goButton) goButton.disabled = false; return fail(p.error.message); }
