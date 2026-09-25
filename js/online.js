@@ -299,7 +299,7 @@
     if (resumeButton) document.getElementById("oResume").onclick = resumeRoom;
     document.getElementById("oCreate").onclick = function () { route("onlineCreate"); };
     document.getElementById("oJoin").onclick = function () { route("onlineJoin"); };
-    document.getElementById("oBack").onclick = function () { state.mode = "local"; route("home"); };
+    document.getElementById("oBack").onclick = function () { cleanup(); state.mode = "local"; window.goTo("home"); };
   }
   function renderCreate() {
     screenEl.innerHTML = '<div class="card stack"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">إنشاء غرفة</h2><label class="field-label" for="ocName">اسمك</label><input type="text" id="ocName" maxlength="20" placeholder="اكتب الاسم"><span class="field-label">مدة الجولة</span><div class="choice-row" id="ocDuration"><div class="choice" data-v="30">30</div><div class="choice active" data-v="60">60</div><div class="choice" data-v="90">90</div></div><span class="field-label">عدد الجولات</span><div class="choice-row" id="ocRounds"><div class="choice active" data-v="3">3</div><div class="choice" data-v="5">5</div><div class="choice" data-v="10">10</div></div><button class="btn btn-primary" id="ocGo">إنشاء الغرفة</button><button class="btn btn-ghost" id="ocBack">رجوع</button></div>';
@@ -475,7 +475,7 @@
   function renderResults() {
     var ranked = o.players.slice().sort(function (a, b) { return (b.total_score || 0) - (a.total_score || 0); });
     screenEl.innerHTML = '<div class="card"><div class="final-title"><span class="trophy">🏆</span><h2 style="font-family:Cairo,sans-serif;font-weight:800;">النتائج النهائية</h2></div>' + ranked.map(function (p, i) { return '<div class="leaderboard-row"><span class="rank-medal">' + (["🥇", "🥈", "🥉"][i] || (i + 1)) + '</span><span class="lb-name">' + esc(p.name) + '</span><span class="lb-score">' + (p.total_score || 0) + '</span></div>'; }).join("") + '<button class="btn btn-primary" id="orHome" style="margin-top:18px;">الرئيسية</button></div>';
-    document.getElementById("orHome").onclick = function () { clearOnlineSession(); cleanup(); state.mode = "local"; route("home"); };
+    document.getElementById("orHome").onclick = function () { clearOnlineSession(); cleanup(); state.mode = "local"; window.goTo("home"); };
   }
 
   window.Online = { render: function (screen) { if (screen === "onlineMenu") renderMenu(); else if (screen === "onlineCreate") renderCreate(); else if (screen === "onlineJoin") renderJoin(); else if (screen === "onlineWaiting") renderWaiting(); else if (screen === "onlinePlaying") renderPlaying(); else if (screen === "onlineReview") renderReview(); else if (screen === "onlineResults") { loadPlayers().then(renderResults); } } };
