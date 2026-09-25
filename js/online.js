@@ -189,6 +189,17 @@
     }, 200);
   }
   function lockOnlineForm() { Array.prototype.forEach.call(document.querySelectorAll("#onlineForm input, #onlineForm button"), function (n) { n.disabled = true; }); }
+  async function bumpPlayerScore(playerId, points) {
+    for (var attempt = 0; attempt < 5; attempt++) {
+      var cur = await client.from("players").select("total_score").eq("id", playerId).single();
+      if (cur.error) return cur;
+      var base = cur.data.total_score || 0;
+      var upd = await client.from("players").update({ total_score: base + points }).eq("id", playerId).eq("total_score", base).select("id").maybeSingle();
+      if (upd.error) return upd;
+      if (upd.data) return { error: null, total_score: base + points };
+    }
+    return { error: { message: "تعذر تحديث النتيجة بعد عدة محاولات متزامنة" } };
+  }
   async function closeRound() {
     if (o.closing || !o.round || o.round.status !== "active") return;
     o.closing = true; clearInterval(o.timerId); lockOnlineForm();
@@ -196,12 +207,12 @@
     if (u.error) return fail(u.error.message);
     if (!u.data) { await loadCurrentRound(); return; }
     await loadRoundScores();
-    var totals = {};
-    o.players.forEach(function (p) { var points = roundTotalForPlayer(o.scores[p.id] || {}); totals[p.id] = (p.total_score || 0) + points; });
     for (var i = 0; i < o.players.length; i++) {
-      var pu = await client.from("players").update({ total_score: totals[o.players[i].id] }).eq("id", o.players[i].id);
+      var points = roundTotalForPlayer(o.scores[o.players[i].id] || {});
+      var pu = await bumpPlayerScore(o.players[i].id, points);
       if (pu.error) return fail(pu.error.message);
     }
+    await loadPlayers();
     if (o.round.number >= o.room.total_rounds) {
       await client.from("rooms").update({ status: "done" }).eq("id", o.room.id);
     } else {
@@ -211,6 +222,7 @@
         if (state.screen === "onlineReview" && o.round && o.round.status === "locked") startNextRound();
       }, 60000);
     }
+
   }
   async function startNextRound() {
     clearTimeout(o.nextRoundTimer);
@@ -405,10 +417,9 @@
     if (decision === "accepted") {
       var owner = o.players.filter(function (p) { return p.id === pending.owner_id; })[0];
       if (owner) {
-        var nextTotal = (owner.total_score || 0) + 10;
-        var pu = await client.from("players").update({ total_score: nextTotal }).eq("id", owner.id);
+        var pu = await bumpPlayerScore(owner.id, 10);
         if (pu.error) { delete o.accepting[pending.id]; alert(pu.error.message); return; }
-        owner.total_score = nextTotal;
+        owner.total_score = pu.total_score;
         if (o.scores[owner.id] && o.scores[owner.id][pending.category]) {
           o.scores[owner.id][pending.category].points = 10;
           o.scores[owner.id][pending.category].status = "unique";
