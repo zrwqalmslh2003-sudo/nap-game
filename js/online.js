@@ -343,9 +343,16 @@
   }
   function renderWaiting() {
     if (!o.room) return renderMenu();
-    screenEl.innerHTML = '<div class="card stack center-text"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">غرفة الانتظار</h2><p class="muted">رمز الغرفة</p><div class="letter-hero" style="font-size:48px;letter-spacing:5px;">' + esc(o.room.code) + '</div><p class="muted">أرسل الرمز إلى أصدقائك</p><div id="oWaitPlayers"></div>' + (isHost() ? '<button class="btn btn-primary" id="owStart">ابدأ</button>' : '<p class="muted">بانتظار المضيف لبدء اللعبة…</p>') + '<button class="btn btn-ghost" id="owLeave">مغادرة</button></div>';
+    screenEl.innerHTML = '<div class="card stack center-text"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">غرفة الانتظار</h2><p class="muted">رمز الغرفة</p><div style="display:flex;align-items:center;justify-content:center;gap:8px;"><div class="letter-hero" style="font-size:48px;letter-spacing:5px;">' + esc(o.room.code) + '</div><button class="btn btn-ghost" id="owCopyCode" type="button" title="نسخ الرمز" aria-label="نسخ الرمز" style="font-size:22px;padding:6px 10px;">📋</button></div><p class="muted">أرسل الرمز إلى أصدقائك</p><div id="oWaitPlayers"></div>' + (isHost() ? '<button class="btn btn-primary" id="owStart">ابدأ</button>' : '<p class="muted">بانتظار المضيف لبدء اللعبة…</p>') + '<button class="btn btn-ghost" id="owLeave">مغادرة</button></div>';
     document.getElementById("owLeave").onclick = function () { clearOnlineSession(); cleanup(); route("onlineMenu"); };
     if (isHost()) document.getElementById("owStart").onclick = startRoom;
+    var copyButton = document.getElementById("owCopyCode");
+    copyButton.onclick = function () {
+      var showFeedback = function (ok) { copyButton.textContent = ok ? "✅" : "⚠️"; setTimeout(function () { copyButton.textContent = "📋"; }, 1200); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(o.room.code).then(function () { showFeedback(true); }, function () { showFeedback(false); });
+      } else { showFeedback(false); }
+    };
     var list = document.getElementById("oWaitPlayers"); list.innerHTML = o.players.map(function (p) { return '<div class="leaderboard-row"><span class="lb-name">' + esc(p.name) + (p.id === o.room.host_id ? ' <span class="muted">(المضيف)</span>' : '') + '</span></div>'; }).join("");
   }
   async function startRoom() {
