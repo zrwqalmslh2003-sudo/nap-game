@@ -10,7 +10,7 @@
     room: null, me: null, players: [], round: null, answers: {},
     submitted: {}, presence: {}, scores: {}, roundHistory: [],
     objections: {}, accepting: {}, seenObjectionIds: {}, objectionQueue: [],
-    channels: [], timerId: null, nextRoundTimer: null, clockId: null, pollId: null, submitDebounce: null,
+    channels: [], timerId: null, nextRoundTimer: null, clockId: null, pollId: null, submitDebounce: null, typingThrottle: null,
     closing: false, starting: false, submitting: false, lockedAt: 0,
     settings: { totalRounds: 3, roundDuration: 60 }
   };
@@ -41,7 +41,7 @@
     cleanup();
     if (window.goTo) window.goTo("onlineMenu");
   }
-  function clearTimers() { clearInterval(o.timerId); clearTimeout(o.nextRoundTimer); clearInterval(o.clockId); clearInterval(o.pollId); clearTimeout(o.submitDebounce); o.timerId = null; o.nextRoundTimer = null; o.clockId = null; o.pollId = null; o.submitDebounce = null; }
+  function clearTimers() { clearInterval(o.timerId); clearTimeout(o.nextRoundTimer); clearInterval(o.clockId); clearInterval(o.pollId); clearTimeout(o.submitDebounce); clearTimeout(o.typingThrottle); o.timerId = null; o.nextRoundTimer = null; o.clockId = null; o.pollId = null; o.submitDebounce = null; o.typingThrottle = null; }
   function cleanup() {
     clearTimers();
     o.channels.forEach(function (ch) { client.removeChannel(ch); });
@@ -110,6 +110,10 @@
       try {
         var rr = await client.from("rooms").select("current_round,status").eq("id", o.room.id).maybeSingle();
         if (rr.error || !rr.data) return;
+        if (o.round && o.round.status === "active") {
+          var rs = await client.from("rounds").select("status").eq("id", o.round.id).maybeSingle();
+          if (!rs.error && rs.data && rs.data.status !== o.round.status) { await loadCurrentRound(); return; }
+        }
         if (state.screen === "onlineReview" && isHost() && o.round) {
           try {
             var pq = await client.from("pending_words").select("*").eq("room_id", o.room.id).eq("round_id", o.round.id).is("host_decision", null);
@@ -141,6 +145,14 @@
     o.players = r.data || [];
     if (state.screen === "onlineWaiting") renderWaiting(); else updatePlayersStrip();
   }
+  async function loadDictionaryWithRetry(letter) {
+    for (var attempt = 0; attempt < 3; attempt++) {
+      var dict = await loadDictionary(letter);
+      if (dict) return dict;
+      if (attempt < 2) await new Promise(function (res) { setTimeout(res, 500 * (attempt + 1)); });
+    }
+    return null;
+  }
   async function loadCurrentRound() {
     if (!o.room) return;
     var rr = await client.from("rooms").select("current_round,status").eq("id", o.room.id).maybeSingle();
@@ -158,7 +170,7 @@
       return;
     }
     o.round = r.data; o.answers = {}; o.submitted = {}; o.scores = {}; o.closing = false; o.submitting = false;
-    var dict = await loadDictionary(o.round.letter);
+    var dict = await loadDictionaryWithRetry(o.round.letter);
     if (!dict) return fail("تعذر تحميل قاموس هذا الحرف؛ لم تبدأ الجولة لتجنب قبول إجابات غير متحقق منها");
     if (o.round.status === "active") { route("onlinePlaying"); startOnlineTimer(); }
     else if (o.round.status === "locked") {
@@ -169,7 +181,7 @@
   }
   async function loadRoundScores() {
     if (!o.round) return;
-    var dict = await loadDictionary(o.round.letter);
+    var dict = await loadDictionaryWithRetry(o.round.letter);
     if (!dict) return fail("تعذر تحميل القاموس؛ لا يمكن حساب نتائج الجولة بأمان");
     var a = await client.from("answers").select("*").eq("round_id", o.round.id);
     if (a.error) return fail(a.error.message);
@@ -189,6 +201,17 @@
     }, 200);
   }
   function lockOnlineForm() { Array.prototype.forEach.call(document.querySelectorAll("#onlineForm input, #onlineForm button"), function (n) { n.disabled = true; }); }
+  async function bumpPlayerScore(playerId, points) {
+    for (var attempt = 0; attempt < 5; attempt++) {
+      var cur = await client.from("players").select("total_score").eq("id", playerId).single();
+      if (cur.error) return cur;
+      var base = cur.data.total_score || 0;
+      var upd = await client.from("players").update({ total_score: base + points }).eq("id", playerId).eq("total_score", base).select("id").maybeSingle();
+      if (upd.error) return upd;
+      if (upd.data) return { error: null, total_score: base + points };
+    }
+    return { error: { message: "تعذر تحديث النتيجة بعد عدة محاولات متزامنة" } };
+  }
   async function closeRound() {
     if (o.closing || !o.round || o.round.status !== "active") return;
     o.closing = true; clearInterval(o.timerId); lockOnlineForm();
@@ -196,11 +219,11 @@
     if (u.error) return fail(u.error.message);
     if (!u.data) { await loadCurrentRound(); return; }
     await loadRoundScores();
-    var totals = {};
-    o.players.forEach(function (p) { var points = roundTotalForPlayer(o.scores[p.id] || {}); totals[p.id] = (p.total_score || 0) + points; });
     for (var i = 0; i < o.players.length; i++) {
-      var pu = await client.from("players").update({ total_score: totals[o.players[i].id] }).eq("id", o.players[i].id);
+      var points = roundTotalForPlayer(o.scores[o.players[i].id] || {});
+      var pu = await bumpPlayerScore(o.players[i].id, points);
       if (pu.error) return fail(pu.error.message);
+      o.players[i].total_score = pu.total_score;
     }
     if (o.round.number >= o.room.total_rounds) {
       await client.from("rooms").update({ status: "done" }).eq("id", o.room.id);
@@ -211,6 +234,7 @@
         if (state.screen === "onlineReview" && o.round && o.round.status === "locked") startNextRound();
       }, 60000);
     }
+
   }
   async function startNextRound() {
     clearTimeout(o.nextRoundTimer);
@@ -243,6 +267,9 @@
     o.submitting = true;
     var finishButton = document.getElementById("ofFinish");
     if (finishButton) finishButton.disabled = true;
+    var check = await client.from("rounds").select("status").eq("id", o.round.id).maybeSingle();
+    if (check.error) { o.submitting = false; if (finishButton) finishButton.disabled = false; return fail(check.error.message); }
+    if (!check.data || check.data.status !== "active") { o.submitting = false; await loadCurrentRound(); return; }
     var rows = CATEGORIES.map(function (c) { return { round_id: o.round.id, player_id: o.me.id, category: c.key, value: inputValue("of_" + c.key), submitted_at: new Date().toISOString() }; });
     var r = await client.from("answers").insert(rows);
     if (r.error) { o.submitting = false; if (finishButton) finishButton.disabled = false; return fail(r.error.message); }
@@ -251,7 +278,11 @@
     clearTimeout(o.submitDebounce);
     o.submitDebounce = setTimeout(function () { if (allSubmitted()) closeRound(); }, 300);
   }
-  function trackTyping() { var ch = o.channels[0]; if (ch) ch.track({ player_id: o.me.id, typing: true, submitted: false }); }
+  function trackTyping() {
+    if (o.typingThrottle) return;
+    var ch = o.channels[0]; if (ch) ch.track({ player_id: o.me.id, typing: true, submitted: false });
+    o.typingThrottle = setTimeout(function () { o.typingThrottle = null; }, 1500);
+  }
 
   function updatePlayersStrip() {
     var strip = document.getElementById("oStrip"); if (!strip) return;
@@ -405,10 +436,9 @@
     if (decision === "accepted") {
       var owner = o.players.filter(function (p) { return p.id === pending.owner_id; })[0];
       if (owner) {
-        var nextTotal = (owner.total_score || 0) + 10;
-        var pu = await client.from("players").update({ total_score: nextTotal }).eq("id", owner.id);
+        var pu = await bumpPlayerScore(owner.id, 10);
         if (pu.error) { delete o.accepting[pending.id]; alert(pu.error.message); return; }
-        owner.total_score = nextTotal;
+        owner.total_score = pu.total_score;
         if (o.scores[owner.id] && o.scores[owner.id][pending.category]) {
           o.scores[owner.id][pending.category].points = 10;
           o.scores[owner.id][pending.category].status = "unique";
