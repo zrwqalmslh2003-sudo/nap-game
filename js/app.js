@@ -60,7 +60,6 @@
       const prefs = loadPrefs();
       if (prefs) {
         state.settings = prefs.settings || state.settings;
-        if (!state.settings.difficulty) state.settings.difficulty = "easy";
         state.playerNames = prefs.playerNames || state.playerNames;
       }
       syncPlayerNamesLength();
@@ -88,7 +87,7 @@
             '<strong>الاعتراضات</strong><br>' +
             'يمكن للاعب الاعتراض على إجابة غير موجودة في القاموس من شاشة المراجعة، باستثناء إجابته هو. يراجع المضيف الاعتراض ويقبله لإضافة 10 نقاط أو يرفضه دون تغيير النتيجة.' +
             '<br><br>' +
-            'بعد انتهاء عدد الجولات المحدد يفوز صاحب أعلى مجموع نقاط. وفي وضع «صعب» تُضاف ثلاثة أحرف إضافية (ث، ذ، ظ) إلى مجموعة الحروف.' +
+            'بعد انتهاء عدد الجولات المحدد يفوز صاحب أعلى مجموع نقاط.' +
           '</p>' +
           '<button class="btn btn-primary" id="closeRules">فهمت</button>' +
         '</div>' +
@@ -128,13 +127,6 @@
           '</div>' +
         '</div>' +
         '<div>' +
-          '<span class="field-label">مستوى الصعوبة</span>' +
-          '<div class="choice-row" id="difficultyRow">' +
-            '<div class="choice' + (s.difficulty !== "hard" ? ' active' : '') + '" data-val="easy">سهل</div>' +
-            '<div class="choice' + (s.difficulty === "hard" ? ' active' : '') + '" data-val="hard">صعب</div>' +
-          '</div>' +
-        '</div>' +
-        '<div>' +
           '<span class="field-label">الفئات</span>' +
           '<div class="cat-list">' +
             CATEGORIES.map(function (c) { return '<span class="cat-chip">' + c.label + '</span>'; }).join("") +
@@ -164,12 +156,6 @@
       const t = e.target.closest(".choice");
       if (!t) return;
       s.totalRounds = parseInt(t.dataset.val, 10);
-      renderSetup();
-    };
-    document.getElementById("difficultyRow").onclick = function (e) {
-      const t = e.target.closest(".choice");
-      if (!t) return;
-      s.difficulty = t.dataset.val;
       renderSetup();
     };
     document.getElementById("btnToPlayers").onclick = function () { goTo("players"); };

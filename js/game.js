@@ -17,7 +17,7 @@ function savePrefs(prefs) {
 const state = {
   screen: "home",
   mode: "local",
-  settings: { playersCount: 2, roundDuration: 60, totalRounds: 5, difficulty: "easy" },
+  settings: { playersCount: 2, roundDuration: 60, totalRounds: 5 },
   playerNames: ["", ""],
   players: [],            // [{id, name, totalScore}]
   round: { number: 0, letter: null, lastLetter: null },
@@ -73,16 +73,16 @@ function currentTurnDuration() {
 }
 
 async function startRound() {
-  if (!EASY_LETTERS.length && !HARD_LETTERS.length && typeof loadAvailableLetters === "function") {
+  if (!AVAILABLE_LETTERS.length && typeof loadAvailableLetters === "function") {
     try { await loadAvailableLetters(); } catch (e) {}
   }
-  if (!EASY_LETTERS.length && !HARD_LETTERS.length) {
+  if (!AVAILABLE_LETTERS.length) {
     alert("لا توجد حروف متاحة");
     goTo("home");
     return;
   }
   state.round.number += 1;
-  const letter = getRandomLetter(state.round.lastLetter, state.settings.difficulty);
+  const letter = getRandomLetter(state.round.lastLetter);
   state.round.letter = letter;
   state.round.lastLetter = letter;
 
