@@ -11,12 +11,17 @@
     room: null, me: null, players: [], round: null, answers: {},
     submitted: {}, presence: {}, scores: {}, roundHistory: [],
     objections: {}, accepting: {}, seenObjectionIds: {}, objectionQueue: [],
-    channels: [], timerId: null, nextRoundTimer: null, clockId: null, pollId: null, submitDebounce: null, typingThrottle: null,
-    closing: false, starting: false, submitting: false, joining: false, creating: false, selfKicked: false, lockedAt: 0, kicking: {},
-    settings: { totalRounds: 3, roundDuration: 60 }
+    channels: [], timerId: null, nextRoundTimer: null, clockId: null, pollId: null, publicPollId: null, submitDebounce: null, typingThrottle: null,
+    closing: false, starting: false, submitting: false, joining: false, creating: false, selfKicked: false, lockedAt: 0, kicking: {}, reporting: {}, publicLoading: false,
+    settings: { totalRounds: 3, roundDuration: 60, isPublic: false, roomName: "" }
   };
 
   var clockSkewMs = 0;
+  var BLOCKED_ROOM_WORDS = ["قحبه", "شرموط", "شرموطه", "خرا", "كس", "نيك", "زب", "fuck", "shit", "porn", "dick", "cunt"];
+  function blockedRoomName(name) {
+    var normalized = normalizeArabic(name).toLowerCase();
+    return BLOCKED_ROOM_WORDS.some(function (word) { return normalized.indexOf(normalizeArabic(word).toLowerCase()) >= 0; });
+  }
   async function syncClock() {
     try {
       var r = await client.rpc("server_now");
@@ -43,7 +48,7 @@
     cleanup();
     if (window.goTo) window.goTo("onlineMenu");
   }
-  function clearTimers() { clearInterval(o.timerId); clearTimeout(o.nextRoundTimer); clearInterval(o.clockId); clearInterval(o.pollId); clearTimeout(o.submitDebounce); clearTimeout(o.typingThrottle); o.timerId = null; o.nextRoundTimer = null; o.clockId = null; o.pollId = null; o.submitDebounce = null; o.typingThrottle = null; }
+  function clearTimers() { clearInterval(o.timerId); clearTimeout(o.nextRoundTimer); clearInterval(o.clockId); clearInterval(o.pollId); clearInterval(o.publicPollId); clearTimeout(o.submitDebounce); clearTimeout(o.typingThrottle); o.timerId = null; o.nextRoundTimer = null; o.clockId = null; o.pollId = null; o.publicPollId = null; o.submitDebounce = null; o.typingThrottle = null; }
   function cleanup() {
     clearTimers();
     o.channels.forEach(function (ch) { client.removeChannel(ch); });
@@ -51,8 +56,10 @@
     o.room = o.me = o.round = null; o.players = []; o.answers = {}; o.submitted = {}; o.presence = {}; o.scores = {}; o.roundHistory = []; o.objections = {}; o.accepting = {}; o.seenObjectionIds = {}; o.objectionQueue = [];
     o.closing = false; o.joining = false; o.creating = false; o.selfKicked = false;
     var k = Object.keys(o.kicking); for (var ki = 0; ki < k.length; ki++) delete o.kicking[k[ki]];
+    var rp = Object.keys(o.reporting); for (var ri = 0; ri < rp.length; ri++) delete o.reporting[rp[ri]];
+    o.publicLoading = false;
   }
-  function route(screen) { state.mode = "online"; window.goTo(screen); }
+  function route(screen) { if (screen !== "onlinePublicRooms") clearInterval(o.publicPollId); state.mode = "online"; window.goTo(screen); }
   function inputValue(id) { var el = document.getElementById(id); return el ? el.value : ""; }
   function saveOnlineSession() { try { sessionStorage.setItem("nap.online.me", JSON.stringify({ id: o.me.id, name: o.me.name, roomCode: o.room.code })); } catch (e) {} }
   function clearOnlineSession() { try { sessionStorage.removeItem("nap.online.me"); } catch (e) {} }
@@ -351,26 +358,35 @@
   function renderMenu() {
     var saved = readOnlineSession();
     var resumeButton = saved && saved.roomCode && saved.name ? '<button class="btn btn-secondary" id="oResume">استئناف الغرفة السابقة (' + esc(saved.roomCode) + ')</button>' : '';
-    screenEl.innerHTML = '<div class="card stack center-text"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">اللعب أونلاين</h2><p class="muted">العبوا معًا من أجهزة مختلفة في نفس الغرفة.</p>' + resumeButton + '<button class="btn btn-primary" id="oCreate">إنشاء غرفة</button><button class="btn btn-secondary" id="oJoin">انضمام</button><button class="btn btn-ghost" id="oBack">رجوع</button></div>';
+    screenEl.innerHTML = '<div class="card stack center-text"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">اللعب أونلاين</h2><p class="muted">العبوا معًا من أجهزة مختلفة في نفس الغرفة.</p>' + resumeButton + '<button class="btn btn-primary" id="oCreate">إنشاء غرفة</button><button class="btn btn-secondary" id="oPublic">غرف عامة</button><button class="btn btn-secondary" id="oJoin">انضمام برمز</button><button class="btn btn-ghost" id="oBack">رجوع</button></div>';
     if (resumeButton) document.getElementById("oResume").onclick = resumeRoom;
     document.getElementById("oCreate").onclick = function () { route("onlineCreate"); };
+    document.getElementById("oPublic").onclick = function () { route("onlinePublicRooms"); };
     document.getElementById("oJoin").onclick = function () { route("onlineJoin"); };
     document.getElementById("oBack").onclick = function () { cleanup(); state.mode = "local"; window.goTo("home"); };
   }
+
   function renderCreate() {
-    screenEl.innerHTML = '<div class="card stack"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">إنشاء غرفة</h2><label class="field-label" for="ocName">اسمك</label><input type="text" id="ocName" maxlength="20" placeholder="اكتب الاسم"><span class="field-label">مدة الجولة</span><div class="choice-row" id="ocDuration"><div class="choice" data-v="30">30</div><div class="choice active" data-v="60">60</div><div class="choice" data-v="90">90</div></div><span class="field-label">عدد الجولات</span><div class="choice-row" id="ocRounds"><div class="choice active" data-v="3">3</div><div class="choice" data-v="5">5</div><div class="choice" data-v="10">10</div></div><button class="btn btn-primary" id="ocGo">إنشاء الغرفة</button><button class="btn btn-ghost" id="ocBack">رجوع</button></div>';
+    o.settings.isPublic = false; o.settings.roomName = "";
+    screenEl.innerHTML = '<div class="card stack"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">إنشاء غرفة</h2><label class="field-label" for="ocName">اسمك</label><input type="text" id="ocName" maxlength="20" placeholder="اكتب الاسم"><span class="field-label">نوع الغرفة</span><div class="choice-row" id="ocVisibility"><div class="choice active" data-v="private">خاصة</div><div class="choice" data-v="public">عامة</div></div><div id="ocPublicFields" style="display:none;"><label class="field-label" for="ocRoomName">اسم الغرفة العامة</label><input type="text" id="ocRoomName" maxlength="40" placeholder="مثال: أصدقاء الحي"><p class="muted" id="ocRoomError" style="color:var(--danger,#b42318);"></p></div><span class="field-label">مدة الجولة</span><div class="choice-row" id="ocDuration"><div class="choice" data-v="30">30</div><div class="choice active" data-v="60">60</div><div class="choice" data-v="90">90</div></div><span class="field-label">عدد الجولات</span><div class="choice-row" id="ocRounds"><div class="choice active" data-v="3">3</div><div class="choice" data-v="5">5</div><div class="choice" data-v="10">10</div></div><button class="btn btn-primary" id="ocGo">إنشاء الغرفة</button><button class="btn btn-ghost" id="ocBack">رجوع</button></div>';
+    document.getElementById("ocVisibility").onclick = function (e) { var n = e.target.closest(".choice"); if (!n) return; o.settings.isPublic = n.dataset.v === "public"; document.getElementById("ocPublicFields").style.display = o.settings.isPublic ? "block" : "none"; Array.prototype.forEach.call(this.children, function (x) { x.classList.toggle("active", x === n); }); };
     document.getElementById("ocDuration").onclick = function (e) { var n = e.target.closest(".choice"); if (!n) return; o.settings.roundDuration = Number(n.dataset.v); Array.prototype.forEach.call(this.children, function (x) { x.classList.toggle("active", x === n); }); };
     document.getElementById("ocRounds").onclick = function (e) { var n = e.target.closest(".choice"); if (!n) return; o.settings.totalRounds = Number(n.dataset.v); Array.prototype.forEach.call(this.children, function (x) { x.classList.toggle("active", x === n); }); };
     document.getElementById("ocGo").onclick = createRoom; document.getElementById("ocBack").onclick = function () { route("onlineMenu"); };
   }
+
   async function createRoom() {
     if (o.creating) return;
     var name = inputValue("ocName").trim(); if (name.length < 2) return alert("اكتب اسمًا من حرفين على الأقل");
+    var roomName = inputValue("ocRoomName").trim(), errorEl = document.getElementById("ocRoomError");
+    if (o.settings.isPublic && (roomName.length < 2 || roomName.length > 40)) { if (errorEl) errorEl.textContent = "اكتب اسمًا للغرفة بين حرفين و40 حرفًا."; return; }
+    if (o.settings.isPublic && blockedRoomName(roomName)) { if (errorEl) errorEl.textContent = "الاسم يحتاج تعديل بسيط، جربي صياغة ثانية."; return; }
+    o.settings.roomName = roomName;
     cleanup();
     o.creating = true;
     var goButton = document.getElementById("ocGo"); if (goButton) goButton.disabled = true;
     var meId = uuid(), roomId = uuid(), roomCode = code();
-    var r = await client.from("rooms").insert({ id: roomId, code: roomCode, host_id: meId, status: "waiting", total_rounds: o.settings.totalRounds, round_duration: o.settings.roundDuration, current_round: 0 }).select().single();
+    var r = await client.from("rooms").insert({ id: roomId, code: roomCode, host_id: meId, status: "waiting", total_rounds: o.settings.totalRounds, round_duration: o.settings.roundDuration, current_round: 0, is_public: o.settings.isPublic, room_name: o.settings.isPublic ? o.settings.roomName : null }).select().single();
     if (r.error) { o.creating = false; if (goButton) goButton.disabled = false; return fail(r.error.message); }
     var p = await client.from("players").insert({ id: meId, room_id: roomId, name: name, total_score: 0, connected: true }).select().single();
     if (p.error) { o.creating = false; if (goButton) goButton.disabled = false; return fail(p.error.message); }
@@ -380,21 +396,64 @@
     screenEl.innerHTML = '<div class="card stack"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">الانضمام إلى غرفة</h2><label class="field-label" for="ojName">اسمك</label><input type="text" id="ojName" maxlength="20" placeholder="اكتب الاسم"><label class="field-label" for="ojCode">رمز الغرفة</label><input type="text" id="ojCode" maxlength="5" placeholder="مثال: A7K2P" style="text-transform:uppercase"><button class="btn btn-primary" id="ojGo">انضمام</button><button class="btn btn-ghost" id="ojBack">رجوع</button></div>';
     document.getElementById("ojGo").onclick = joinRoom; document.getElementById("ojBack").onclick = function () { route("onlineMenu"); };
   }
-  async function joinRoom() {
+  async function joinRoom(roomId) {
     if (o.joining) return;
-    var name = inputValue("ojName").trim(), roomCode = inputValue("ojCode").trim().toUpperCase();
-    if (name.length < 2 || roomCode.length !== 5) return alert("تحقق من الاسم ورمز الغرفة");
+    var name = inputValue(roomId ? "opName" : "ojName").trim(), roomCode = inputValue("ojCode").trim().toUpperCase();
+    if (name.length < 2) { o.joining = false; return alert("اكتب اسمًا من حرفين على الأقل"); }
+    if (!roomId && roomCode.length !== 5) { o.joining = false; return alert("تحقق من الاسم ورمز الغرفة"); }
     o.joining = true;
-    var goButton = document.getElementById("ojGo"); if (goButton) goButton.disabled = true;
-    var r = await client.from("rooms").select("*").eq("code", roomCode).eq("status", "waiting").maybeSingle();
+    var goButton = roomId ? null : document.getElementById("ojGo"); if (goButton) goButton.disabled = true;
+    var query = client.from("rooms").select("*").eq("status", "waiting");
+    var r = await (roomId ? query.eq("id", roomId).maybeSingle() : query.eq("code", roomCode).maybeSingle());
     if (r.error || !r.data) { o.joining = false; if (goButton) goButton.disabled = false; return fail("الغرفة غير موجودة أو بدأت بالفعل"); }
-    var count = await client.from("players").select("id", { count: "exact", head: true }).eq("room_id", r.data.id);
+    var count = await client.from("players").select("id", { count: "exact", head: true }).eq("room_id", r.data.id).is("kicked_at", null);
     if (count.error) { o.joining = false; if (goButton) goButton.disabled = false; return fail(count.error.message); }
     if ((count.count || 0) >= MAX_ONLINE_PLAYERS) { o.joining = false; if (goButton) goButton.disabled = false; return fail("الغرفة ممتلئة (6 لاعبين كحد أقصى)"); }
     var meId = uuid();
     var p = await client.from("players").insert({ id: meId, room_id: r.data.id, name: name, total_score: 0, connected: true }).select().single();
     if (p.error) { o.joining = false; if (goButton) goButton.disabled = false; return fail(p.error.message); }
-    o.room = r.data; o.me = p.data; saveOnlineSession(); setupRealtime(); route("onlineWaiting");
+    o.room = r.data; o.me = p.data; o.joining = false; saveOnlineSession(); setupRealtime(); route("onlineWaiting");
+  }
+
+  async function reportRoom(roomId, btn) {
+    if (o.reporting[roomId]) return;
+    o.reporting[roomId] = true; if (btn) { btn.disabled = true; btn.textContent = "جارٍ الإبلاغ…"; }
+    var r = await client.from("room_reports").insert({ room_id: roomId, reported_by: o.me ? o.me.id : null });
+    delete o.reporting[roomId];
+    if (r.error && r.error.code !== "23505") { if (btn) { btn.disabled = false; btn.textContent = "إبلاغ عن الغرفة"; } return alert("تعذر تسجيل البلاغ"); }
+    if (btn) { btn.disabled = true; btn.textContent = "تم تسجيل البلاغ"; }
+  }
+  async function loadPublicRooms() {
+    if (o.publicLoading || state.screen !== "onlinePublicRooms") return;
+    o.publicLoading = true;
+    var box = document.getElementById("opRooms");
+    var r = await client.from("rooms").select("id,room_name,created_at,status").eq("is_public", true).eq("status", "waiting").order("created_at", { ascending: false }).limit(30);
+    if (r.error) { o.publicLoading = false; if (box) box.innerHTML = '<p class="muted center-text">تعذر تحميل الغرف العامة.</p>'; return; }
+    var rooms = r.data || [], ids = rooms.map(function (x) { return x.id; }), countByRoom = {};
+    if (ids.length) {
+      var counts = await client.from("players").select("room_id").in("room_id", ids).is("kicked_at", null);
+      if (counts.error) { o.publicLoading = false; if (box) box.innerHTML = '<p class="muted center-text">تعذر تحميل اللاعبين.</p>'; return; }
+      (counts.data || []).forEach(function (row) { countByRoom[row.room_id] = (countByRoom[row.room_id] || 0) + 1; });
+    }
+    var cutoff = Date.now() - 2 * 60 * 60 * 1000, stale = rooms.filter(function (x) { return new Date(x.created_at).getTime() < cutoff; }).map(function (x) { return x.id; });
+    if (stale.length) { /* Client-side workaround until a scheduled cleanup job is available. */ await client.from("rooms").update({ is_public: false }).in("id", stale).eq("status", "waiting"); rooms = rooms.filter(function (x) { return stale.indexOf(x.id) < 0; }); }
+    o.publicLoading = false;
+    if (!box || state.screen !== "onlinePublicRooms") return;
+    if (!rooms.length) { box.innerHTML = '<p class="muted center-text">لا توجد غرف عامة مفتوحة الآن.</p>'; return; }
+    box.innerHTML = rooms.map(function (room) {
+      var count = countByRoom[room.id] || 0, full = count >= MAX_ONLINE_PLAYERS;
+      return '<div class="leaderboard-row public-room-row"><span class="lb-name"><strong>' + esc(room.room_name || "غرفة عامة") + '</strong><br><span class="muted" style="font-size:12px;">' + count + ' / ' + MAX_ONLINE_PLAYERS + ' لاعبين</span></span><span class="muted" style="font-size:12px;">' + (full ? "ممتلئة" : "مفتوحة") + '</span><button class="btn ' + (full ? 'btn-ghost' : 'btn-primary') + '" data-public-join="' + esc(room.id) + '"' + (full ? ' disabled' : '') + '>' + (full ? 'ممتلئة' : 'انضمام') + '</button><button class="btn btn-ghost" data-public-report="' + esc(room.id) + '" style="font-size:12px;">إبلاغ عن الغرفة</button></div>';
+    }).join("");
+    Array.prototype.forEach.call(box.querySelectorAll("[data-public-join]"), function (btn) { btn.onclick = function () { joinRoom(btn.dataset.publicJoin); }; });
+    Array.prototype.forEach.call(box.querySelectorAll("[data-public-report]"), function (btn) { btn.onclick = function () { reportRoom(btn.dataset.publicReport, btn); }; });
+  }
+  function renderPublicRooms() {
+    clearInterval(o.publicPollId);
+    screenEl.innerHTML = '<div class="card stack"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">غرف عامة</h2><label class="field-label" for="opName">اسمك</label><input type="text" id="opName" maxlength="20" placeholder="اكتب الاسم"><div id="opRooms"><p class="muted center-text">جارٍ تحميل الغرف…</p></div><button class="btn btn-secondary" id="opJoinCode">انضمام برمز</button><button class="btn btn-ghost" id="opBack">رجوع</button></div>';
+    document.getElementById("opJoinCode").onclick = function () { route("onlineJoin"); };
+    document.getElementById("opBack").onclick = function () { route("onlineMenu"); };
+    loadPublicRooms();
+    o.publicPollId = setInterval(loadPublicRooms, 3000);
   }
   async function kickPlayer(playerId, btn) {
     if (o.kicking[playerId]) return;
@@ -571,5 +630,5 @@
     document.getElementById("orHome").onclick = function () { clearOnlineSession(); cleanup(); state.mode = "local"; window.goTo("home"); };
   }
 
-  window.Online = { render: function (screen) { if (screen === "onlineMenu") renderMenu(); else if (screen === "onlineCreate") renderCreate(); else if (screen === "onlineJoin") renderJoin(); else if (screen === "onlineWaiting") renderWaiting(); else if (screen === "onlinePlaying") renderPlaying(); else if (screen === "onlineReview") renderReview(); else if (screen === "onlineResults") { loadPlayers().then(renderResults); } } };
+  window.Online = { render: function (screen) { if (screen === "onlineMenu") renderMenu(); else if (screen === "onlineCreate") renderCreate(); else if (screen === "onlineJoin") renderJoin(); else if (screen === "onlinePublicRooms") renderPublicRooms(); else if (screen === "onlineWaiting") renderWaiting(); else if (screen === "onlinePlaying") renderPlaying(); else if (screen === "onlineReview") renderReview(); else if (screen === "onlineResults") { loadPlayers().then(renderResults); } } };
 })();
