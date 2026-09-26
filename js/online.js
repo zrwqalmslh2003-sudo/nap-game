@@ -343,15 +343,21 @@
   }
   function renderWaiting() {
     if (!o.room) return renderMenu();
-    screenEl.innerHTML = '<div class="card stack center-text"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">غرفة الانتظار</h2><p class="muted">رمز الغرفة</p><div style="display:flex;align-items:center;justify-content:center;gap:8px;"><div class="letter-hero" style="font-size:48px;letter-spacing:5px;">' + esc(o.room.code) + '</div><button class="btn btn-ghost" id="owCopyCode" type="button" title="نسخ الرمز" aria-label="نسخ الرمز" style="font-size:22px;padding:6px 10px;">📋</button></div><p class="muted">أرسل الرمز إلى أصدقائك</p><div id="oWaitPlayers"></div>' + (isHost() ? '<button class="btn btn-primary" id="owStart">ابدأ</button>' : '<p class="muted">بانتظار المضيف لبدء اللعبة…</p>') + '<button class="btn btn-ghost" id="owLeave">مغادرة</button></div>';
+    screenEl.innerHTML = '<div class="card stack center-text"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">غرفة الانتظار</h2><p class="muted">رمز الغرفة</p><div style="display:flex;align-items:center;justify-content:center;gap:8px;"><div class="letter-hero" style="font-size:48px;letter-spacing:5px;">' + esc(o.room.code) + '</div><button class="btn btn-ghost" id="owCopyCode" type="button" title="نسخ الرمز" aria-label="نسخ الرمز" style="display:inline-flex;align-items:center;gap:7px;font-size:16px;padding:8px 10px;"><svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="11" height="11" rx="1.5"></rect><path d="M16 8V6.5A1.5 1.5 0 0 0 14.5 5h-7A1.5 1.5 0 0 0 6 6.5v7A1.5 1.5 0 0 0 7.5 15H8"></path></svg><span>نسخ الرمز</span></button></div><p class="muted">أرسل الرمز إلى أصدقائك</p><div id="oWaitPlayers"></div>' + (isHost() ? '<button class="btn btn-primary" id="owStart">ابدأ</button>' : '<p class="muted">بانتظار المضيف لبدء اللعبة…</p>') + '<button class="btn btn-ghost" id="owLeave">مغادرة</button></div>';
     document.getElementById("owLeave").onclick = function () { clearOnlineSession(); cleanup(); route("onlineMenu"); };
     if (isHost()) document.getElementById("owStart").onclick = startRoom;
     var copyButton = document.getElementById("owCopyCode");
-    copyButton.onclick = function () {
-      var showFeedback = function (ok) { copyButton.textContent = ok ? "✅" : "⚠️"; setTimeout(function () { copyButton.textContent = "📋"; }, 1200); };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(o.room.code).then(function () { showFeedback(true); }, function () { showFeedback(false); });
-      } else { showFeedback(false); }
+    copyButton.onclick = async function () {
+      var label = copyButton.querySelector("span");
+      try {
+        if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error("clipboard unavailable");
+        await navigator.clipboard.writeText(o.room.code);
+        label.textContent = "تم نسخ الرمز";
+        setTimeout(function () { if (label) label.textContent = "نسخ الرمز"; }, 1600);
+      } catch (e) {
+        label.textContent = "تعذر النسخ";
+        setTimeout(function () { if (label) label.textContent = "نسخ الرمز"; }, 1600);
+      }
     };
     var list = document.getElementById("oWaitPlayers"); list.innerHTML = o.players.map(function (p) { return '<div class="leaderboard-row"><span class="lb-name">' + esc(p.name) + (p.id === o.room.host_id ? ' <span class="muted">(المضيف)</span>' : '') + '</span></div>'; }).join("");
   }
