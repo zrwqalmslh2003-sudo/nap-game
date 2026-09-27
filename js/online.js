@@ -516,7 +516,7 @@
     wireKickButtons(list);
   }
   async function startRoom() {
-    if (!isHost() || o.players.length < 2 || o.starting) return;
+    if (!isHost() || activePlayers().length < 2 || o.starting) return;
     o.starting = true;
     var existing = await client.from("rounds").select("id").eq("room_id", o.room.id).eq("number", 1).maybeSingle();
     if (existing.error) { o.starting = false; return fail(existing.error.message); }
