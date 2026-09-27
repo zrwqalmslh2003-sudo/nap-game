@@ -17,10 +17,8 @@
   };
 
   var clockSkewMs = 0;
-  var BLOCKED_ROOM_WORDS = ["قحبه", "شرموط", "شرموطه", "خرا", "كس", "نيك", "زب", "fuck", "shit", "porn", "dick", "cunt"];
-  function blockedRoomName(name) {
-    var normalized = normalizeArabic(name).toLowerCase();
-    return BLOCKED_ROOM_WORDS.some(function (word) { return normalized.indexOf(normalizeArabic(word).toLowerCase()) >= 0; });
+  function generateRoomName() {
+    return "الغرفة " + Math.floor(100 + Math.random() * 900);
   }
   async function syncClock() {
     try {
@@ -368,7 +366,7 @@
 
   function renderCreate() {
     o.settings.isPublic = false; o.settings.roomName = "";
-    screenEl.innerHTML = '<div class="card stack"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">إنشاء غرفة</h2><label class="field-label" for="ocName">اسمك</label><input type="text" id="ocName" maxlength="20" placeholder="اكتب الاسم"><span class="field-label">نوع الغرفة</span><div class="choice-row" id="ocVisibility"><div class="choice active" data-v="private">خاصة</div><div class="choice" data-v="public">عامة</div></div><div id="ocPublicFields" style="display:none;"><label class="field-label" for="ocRoomName">اسم الغرفة العامة</label><input type="text" id="ocRoomName" maxlength="40" placeholder="مثال: أصدقاء الحي"><p class="muted" id="ocRoomError" style="color:var(--danger,#b42318);"></p></div><span class="field-label">مدة الجولة</span><div class="choice-row" id="ocDuration"><div class="choice" data-v="30">30</div><div class="choice active" data-v="60">60</div><div class="choice" data-v="90">90</div></div><span class="field-label">عدد الجولات</span><div class="choice-row" id="ocRounds"><div class="choice active" data-v="3">3</div><div class="choice" data-v="5">5</div><div class="choice" data-v="10">10</div></div><button class="btn btn-primary" id="ocGo">إنشاء الغرفة</button><button class="btn btn-ghost" id="ocBack">رجوع</button></div>';
+    screenEl.innerHTML = '<div class="card stack"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">إنشاء غرفة</h2><label class="field-label" for="ocName">اسمك</label><input type="text" id="ocName" maxlength="20" placeholder="اكتب الاسم"><span class="field-label">نوع الغرفة</span><div class="choice-row" id="ocVisibility"><div class="choice active" data-v="private">خاصة</div><div class="choice" data-v="public">عامة</div></div><div id="ocPublicFields" style="display:none;"><p class="muted">سيُسمّى تلقائيًا، مثل: الغرفة 575</p></div><span class="field-label">مدة الجولة</span><div class="choice-row" id="ocDuration"><div class="choice" data-v="30">30</div><div class="choice active" data-v="60">60</div><div class="choice" data-v="90">90</div></div><span class="field-label">عدد الجولات</span><div class="choice-row" id="ocRounds"><div class="choice active" data-v="3">3</div><div class="choice" data-v="5">5</div><div class="choice" data-v="10">10</div></div><button class="btn btn-primary" id="ocGo">إنشاء الغرفة</button><button class="btn btn-ghost" id="ocBack">رجوع</button></div>';
     document.getElementById("ocVisibility").onclick = function (e) { var n = e.target.closest(".choice"); if (!n) return; o.settings.isPublic = n.dataset.v === "public"; document.getElementById("ocPublicFields").style.display = o.settings.isPublic ? "block" : "none"; Array.prototype.forEach.call(this.children, function (x) { x.classList.toggle("active", x === n); }); };
     document.getElementById("ocDuration").onclick = function (e) { var n = e.target.closest(".choice"); if (!n) return; o.settings.roundDuration = Number(n.dataset.v); Array.prototype.forEach.call(this.children, function (x) { x.classList.toggle("active", x === n); }); };
     document.getElementById("ocRounds").onclick = function (e) { var n = e.target.closest(".choice"); if (!n) return; o.settings.totalRounds = Number(n.dataset.v); Array.prototype.forEach.call(this.children, function (x) { x.classList.toggle("active", x === n); }); };
@@ -378,10 +376,7 @@
   async function createRoom() {
     if (o.creating) return;
     var name = inputValue("ocName").trim(); if (name.length < 2) return alert("اكتب اسمًا من حرفين على الأقل");
-    var roomName = inputValue("ocRoomName").trim(), errorEl = document.getElementById("ocRoomError");
-    if (o.settings.isPublic && (roomName.length < 2 || roomName.length > 40)) { if (errorEl) errorEl.textContent = "اكتب اسمًا للغرفة بين حرفين و40 حرفًا."; return; }
-    if (o.settings.isPublic && blockedRoomName(roomName)) { if (errorEl) errorEl.textContent = "الاسم يحتاج تعديل بسيط، جربي صياغة ثانية."; return; }
-    o.settings.roomName = roomName;
+    o.settings.roomName = o.settings.isPublic ? generateRoomName() : "";
     cleanup();
     o.creating = true;
     var goButton = document.getElementById("ocGo"); if (goButton) goButton.disabled = true;
@@ -474,7 +469,14 @@
   function renderWaiting() {
     if (!o.room) return renderMenu();
     screenEl.innerHTML = '<div class="card stack center-text"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">غرفة الانتظار</h2><p class="muted">رمز الغرفة</p><div style="display:flex;align-items:center;justify-content:center;gap:8px;"><div class="letter-hero" style="font-size:48px;letter-spacing:5px;">' + esc(o.room.code) + '</div><button class="btn btn-ghost" id="owCopyCode" type="button" title="نسخ الرمز" aria-label="نسخ الرمز" style="display:inline-flex;align-items:center;gap:7px;font-size:16px;padding:8px 10px;"><svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="11" height="11" rx="1.5"></rect><path d="M16 8V6.5A1.5 1.5 0 0 0 14.5 5h-7A1.5 1.5 0 0 0 6 6.5v7A1.5 1.5 0 0 0 7.5 15H8"></path></svg><span>نسخ الرمز</span></button></div><p class="muted">أرسل الرمز إلى أصدقائك</p><div id="oWaitPlayers"></div>' + (isHost() ? '<button class="btn btn-primary" id="owStart">ابدأ</button>' : '<p class="muted">بانتظار المضيف لبدء اللعبة…</p>') + '<button class="btn btn-ghost" id="owLeave">مغادرة</button></div>';
-    document.getElementById("owLeave").onclick = function () { clearOnlineSession(); cleanup(); route("onlineMenu"); };
+    document.getElementById("owLeave").onclick = async function () {
+      if (o.me && o.room) {
+        try { await client.from("players").update({ connected: false }).eq("id", o.me.id); } catch (e) {}
+      }
+      clearOnlineSession();
+      cleanup();
+      route("onlineMenu");
+    };
     if (isHost()) document.getElementById("owStart").onclick = startRoom;
     var copyButton = document.getElementById("owCopyCode");
     copyButton.onclick = async function () {
