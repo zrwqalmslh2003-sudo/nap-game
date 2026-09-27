@@ -59,9 +59,30 @@
   }
   function route(screen) { if (screen !== "onlinePublicRooms") clearInterval(o.publicPollId); state.mode = "online"; window.goTo(screen); }
   function inputValue(id) { var el = document.getElementById(id); return el ? el.value : ""; }
-  function saveOnlineSession() { try { sessionStorage.setItem("nap.online.me", JSON.stringify({ id: o.me.id, name: o.me.name, roomCode: o.room.code })); } catch (e) {} }
-  function clearOnlineSession() { try { sessionStorage.removeItem("nap.online.me"); } catch (e) {} }
-  function readOnlineSession() { try { return JSON.parse(sessionStorage.getItem("nap.online.me") || "null"); } catch (e) { return null; } }
+  function saveOnlineSession() {
+    try {
+      var payload = { id: o.me.id, name: o.me.name, roomCode: o.room.code, savedAt: Date.now() };
+      localStorage.setItem("nap.online.me", JSON.stringify(payload));
+      sessionStorage.setItem("nap.online.me", JSON.stringify(payload));
+    } catch (e) {}
+  }
+  function clearOnlineSession() {
+    try { localStorage.removeItem("nap.online.me"); } catch (e) {}
+    try { sessionStorage.removeItem("nap.online.me"); } catch (e) {}
+  }
+  function readOnlineSession() {
+    try {
+      var raw = sessionStorage.getItem("nap.online.me") || localStorage.getItem("nap.online.me");
+      if (!raw) return null;
+      var data = JSON.parse(raw);
+      if (!data.savedAt || Date.now() - data.savedAt > 60 * 60 * 1000) {
+        localStorage.removeItem("nap.online.me");
+        sessionStorage.removeItem("nap.online.me");
+        return null;
+      }
+      return data;
+    } catch (e) { return null; }
+  }
   function handleSelfKicked() {
     if (o.selfKicked) return true;
     o.selfKicked = true;
