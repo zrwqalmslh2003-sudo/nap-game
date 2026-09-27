@@ -10,6 +10,9 @@
   --accent-warm: #E08E45;
   --danger: #C1443C;
   --danger-soft: #F3DAD2;
+  --score-zero: #C1443C;
+  --score-unique: #1E4A37;
+  --score-dup: #E08E45;
   --gold: #C9A227;
   --silver: #8A8F86;
   --bronze: #B0703C;
@@ -30,6 +33,9 @@
     --accent-warm: #E8A968;
     --danger: #E17A70;
     --danger-soft: #3A2420;
+    --score-zero: #F87171;
+    --score-unique: #4ADE80;
+    --score-dup: #FACC15;
     --gold: #E0C158;
     --silver: #B6BBAD;
     --bronze: #CB9364;
@@ -48,6 +54,9 @@
   --accent-warm: #E8A968;
   --danger: #E17A70;
   --danger-soft: #3A2420;
+  --score-zero: #F87171;
+  --score-unique: #4ADE80;
+  --score-dup: #FACC15;
   --gold: #E0C158;
   --silver: #B6BBAD;
   --bronze: #CB9364;

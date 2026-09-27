@@ -6,7 +6,30 @@
 <title>اسم حيوان نبات جماد بلاد</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<meta name="theme-color" content="#a66b2c">
+<meta name="theme-color" content="#fdf6ec" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121212" media="(prefers-color-scheme: dark)">
+<script>
+(function () {
+  var root = document.documentElement;
+  var saved = localStorage.getItem("nap.theme");
+  if (saved === "dark" || saved === "light") {
+    root.setAttribute("data-theme", saved);
+  } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    root.setAttribute("data-theme", "dark");
+  }
+  window.addEventListener("DOMContentLoaded", function () {
+    var btn = document.getElementById("themeToggle");
+    if (!btn) return;
+    btn.onclick = function () {
+      var current = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", current);
+      localStorage.setItem("nap.theme", current);
+      btn.setAttribute("aria-label", current === "dark" ? "تبديل الوضع الفاتح" : "تبديل الوضع الداكن");
+      btn.setAttribute("title", current === "dark" ? "الوضع الفاتح" : "الوضع الداكن");
+    };
+  });
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -23,6 +46,10 @@
   <header class="top">
     <span class="brand">اسم • حيوان • نبات</span>
     <span class="round-badge hidden" id="roundBadge"></span>
+    <button id="themeToggle" type="button" aria-label="تبديل الوضع الداكن" title="الوضع الداكن">
+      <span class="icon-sun" aria-hidden="true">☀</span>
+      <span class="icon-moon" aria-hidden="true">☾</span>
+    </button>
   </header>
 
   <main id="screen" role="main"></main>
