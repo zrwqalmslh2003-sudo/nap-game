@@ -17,7 +17,7 @@ grep -q '23505' js/online.js
 grep -q 'pending_words' js/online.js
 grep -q 'oNextRound' js/online.js
 grep -q '60000' js/online.js
-grep -q 'var dict = await loadDictionary(o.round.letter)' js/online.js
+grep -q 'loadDictionaryWithRetry' js/online.js
 grep -q 'لا يمكن حساب نتائج الجولة بأمان' js/online.js
 
 echo "online-preflight: PASS"
