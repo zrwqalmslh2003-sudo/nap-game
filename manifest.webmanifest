@@ -1,0 +1,20 @@
+{
+  "name": "اسم حيوان نبات جماد بلاد",
+  "short_name": "اسم حيوان نبات",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fdf6ec",
+  "theme_color": "#a66b2c",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
