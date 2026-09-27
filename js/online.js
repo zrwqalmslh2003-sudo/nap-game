@@ -57,6 +57,16 @@
   function saveOnlineSession() { try { sessionStorage.setItem("nap.online.me", JSON.stringify({ id: o.me.id, name: o.me.name, roomCode: o.room.code })); } catch (e) {} }
   function clearOnlineSession() { try { sessionStorage.removeItem("nap.online.me"); } catch (e) {} }
   function readOnlineSession() { try { return JSON.parse(sessionStorage.getItem("nap.online.me") || "null"); } catch (e) { return null; } }
+  function handleSelfKicked() {
+    if (o.selfKicked) return true;
+    o.selfKicked = true;
+    clearInterval(o.timerId);
+    clearOnlineSession();
+    cleanup();
+    route("onlineMenu");
+    alert("تم إخراجك من الغرفة من قبل المضيف");
+    return true;
+  }
   async function resumeRoom() {
     var saved = readOnlineSession();
     if (!saved || !saved.roomCode || !saved.id) return;
@@ -115,6 +125,8 @@
       try {
         var rr = await client.from("rooms").select("current_round,status").eq("id", o.room.id).maybeSingle();
         if (rr.error || !rr.data) return;
+        var meState = await client.from("players").select("kicked_at").eq("id", o.me.id).eq("room_id", o.room.id).maybeSingle();
+        if (!meState.error && meState.data && meState.data.kicked_at) { handleSelfKicked(); return; }
         if (o.round && o.round.status === "active") {
           var rs = await client.from("rounds").select("status").eq("id", o.round.id).maybeSingle();
           if (!rs.error && rs.data && rs.data.status !== o.round.status) { await loadCurrentRound(); return; }
@@ -151,12 +163,7 @@
     if (o.me && !o.selfKicked) {
       var mine = o.players.filter(function (p) { return p.id === o.me.id; })[0];
       if (mine && mine.kicked_at) {
-        o.selfKicked = true;
-        clearInterval(o.timerId);
-        clearOnlineSession();
-        cleanup();
-        route("onlineMenu");
-        alert("تم إخراجك من الغرفة من قبل المضيف");
+        handleSelfKicked();
         return;
       }
     }
