@@ -111,6 +111,10 @@
       o.objections[p.new.id] = p.new;
       if (isHost()) { o.objectionQueue.push(p.new); showNextObjection(); }
       renderReview();
+    }).on("postgres_changes", { event: "UPDATE", schema: "public", table: "pending_words" }, function (p) {
+      if (!p.new || !o.room || p.new.room_id !== o.room.id) return;
+      if (state.screen !== "onlineReview") return;
+      loadRoundScores().then(renderReview);
     }).on("presence", { event: "sync" }, function () {
       var stateByKey = roomChannel.presenceState(), next = {};
       Object.keys(stateByKey).forEach(function (key) { var last = stateByKey[key][stateByKey[key].length - 1]; if (last) next[key] = last; });
@@ -215,6 +219,16 @@
     (a.data || []).forEach(function (row) { if (!byPlayer[row.player_id]) byPlayer[row.player_id] = {}; byPlayer[row.player_id][row.category] = row.value || ""; });
     o.scores = calculateRoundScores(o.round.letter, o.players, byPlayer);
     o.players.forEach(function (p) { if (!o.scores[p.id]) o.scores[p.id] = {}; });
+    var obj = await client.from("pending_words")
+      .select("owner_id,category")
+      .eq("round_id", o.round.id)
+      .eq("host_decision", "accepted");
+    (obj.data || []).forEach(function (row) {
+      if (o.scores[row.owner_id] && o.scores[row.owner_id][row.category]) {
+        o.scores[row.owner_id][row.category].points = 10;
+        o.scores[row.owner_id][row.category].status = "unique";
+      }
+    });
     o.roundHistory.push({ number: o.round.number, letter: o.round.letter, scores: o.scores });
   }
 
@@ -251,16 +265,20 @@
       if (pu.error) return fail(pu.error.message);
       o.players[i].total_score = pu.total_score;
     }
-    if (o.round.number >= o.room.total_rounds) {
-      await client.from("rooms").update({ status: "done" }).eq("id", o.room.id);
-    } else {
-      route("onlineReview");
-      clearTimeout(o.nextRoundTimer);
-      o.nextRoundTimer = setTimeout(function () {
-        if (state.screen === "onlineReview" && o.round && o.round.status === "locked") startNextRound();
-      }, 60000);
-    }
-
+    route("onlineReview");
+    clearTimeout(o.nextRoundTimer);
+    o.nextRoundTimer = setTimeout(function () {
+      if (state.screen === "onlineReview" && o.round && o.round.status === "locked") {
+        if (o.round.number >= o.room.total_rounds) finishRoom();
+        else startNextRound();
+      }
+    }, 60000);
+  }
+  async function finishRoom() {
+    clearTimeout(o.nextRoundTimer);
+    o.nextRoundTimer = null;
+    if (!o.room || o.room.status === "done") return;
+    await client.from("rooms").update({ status: "done" }).eq("id", o.room.id);
   }
   async function startNextRound() {
     clearTimeout(o.nextRoundTimer);
@@ -533,7 +551,7 @@
   function renderReview() {
     if (!o.round) return;
     var rows = activePlayers().map(function (p) { var sc = o.scores[p.id] || {}; return '<div class="review-player"><div class="review-player-name"><span>' + esc(p.name) + '</span>' + kickButtonHTML(p) + '<span>' + roundTotalForPlayer(sc) + '</span></div>' + CATEGORIES.map(function (c) { var cell = sc[c.key] || { value: "", points: 0, status: "empty" }; var obj = findObjection(cell.value, c.key, p.id); var flag = cell.status === "not_in_dict" && p.id === o.me.id && !obj ? '<button class="btn btn-secondary" style="padding:4px 12px;font-size:13px;margin-inline-start:8px;border-radius:8px;width:auto;display:inline-flex;" data-object-category="' + esc(c.key) + '" data-object-owner="' + esc(p.id) + '" data-object-word="' + esc(cell.value) + '">اعتراض</button>' : ''; var cls = cell.points === 10 ? "unique" : cell.points === 5 ? "dup" : "zero"; return '<div class="review-row"><span class="cat">' + c.label + '</span><span class="ans">' + esc(cell.value || "—") + flag + '</span><span class="pts ' + cls + '">+' + cell.points + '</span></div>'; }).join("") + '</div>'; }).join("");
-    var nextAction = o.round.number < o.room.total_rounds ? (isHost() ? '<button class="btn btn-primary" id="oNextRound" style="margin-top:16px;">الجولة التالية</button>' : '<p class="center-text muted" style="margin-top:16px;">بانتظار المضيف لبدء الجولة التالية…</p>') : '<p class="center-text muted" style="margin-top:16px;">انتهت الجولات…</p>';
+    var nextAction = o.round.number < o.room.total_rounds ? (isHost() ? '<button class="btn btn-primary" id="oNextRound" style="margin-top:16px;">الجولة التالية</button>' : '<p class="center-text muted" style="margin-top:16px;">بانتظار المضيف لبدء الجولة التالية…</p>') : (isHost() ? '<button class="btn btn-primary" id="oNextRound" style="margin-top:16px;">النتائج النهائية</button>' : '<p class="center-text muted" style="margin-top:16px;">بانتظار المضيف لعرض النتائج النهائية…</p>');
     screenEl.innerHTML = '<div class="card"><p class="center-text muted">نتائج الجولة — الحرف <strong style="color:var(--accent-deep);font-size:20px;">' + esc(o.round.letter) + '</strong></p>' + rows + nextAction + '</div>';
     Array.prototype.forEach.call(screenEl.querySelectorAll("[data-object-category]"), function (button) {
       button.onclick = function () { raiseObjection({ value: button.dataset.objectWord, category: button.dataset.objectCategory }, { id: button.dataset.objectOwner }); };
@@ -544,7 +562,8 @@
       nextBtn.disabled = true;
       clearTimeout(o.nextRoundTimer);
       o.nextRoundTimer = null;
-      startNextRound();
+      if (o.round.number >= o.room.total_rounds) finishRoom();
+      else startNextRound();
     };
   }
   function renderResults() {
