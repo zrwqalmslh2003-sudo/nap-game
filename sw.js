@@ -10,12 +10,12 @@ var LOCAL_ASSETS = [
   "./css/variables.css",
   "./css/style.css",
   "./js/normalization.js",
-  "./js/letters.js?v=c5cb9ef",
+  "./js/letters.js?v=20260928",
   "./js/dictionary.js",
   "./js/validation.js",
   "./js/scoring.js",
   "./js/game.js?v=c5cb9ef",
-  "./js/online.js?v=c5cb9ef",
+  "./js/online.js?v=20260928",
   "./js/app.js?v=c5cb9ef"
 ];
 
