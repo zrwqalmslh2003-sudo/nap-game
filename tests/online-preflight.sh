@@ -7,6 +7,12 @@ cd "$ROOT"
 node --check js/online.js
 node --check js/game.js
 node --check js/letters.js
+
+# Cross-file symbol resolution. `node --check` is per file, so a file can be
+# valid while the game throws at runtime -- that is how 489f894 shipped broken
+# main (js/online.js used EASY_LETTERS, js/letters.js no longer defined it).
+node tests/cross-file-symbols.js || { echo "cross-file symbol check FAILED"; exit 1; }
+
 git diff --check
 
 grep -q 'loadAvailableLetters' js/online.js
@@ -22,6 +28,7 @@ grep -q 'لا يمكن حساب نتائج الجولة بأمان' js/online.js
 
 echo "online-preflight: PASS"
 echo "- JavaScript syntax: PASS"
+echo "- cross-file symbols: PASS"
 echo "- whitespace check: PASS"
 echo "- manifest loading guard: PASS"
 echo "- polling fallback: PASS"
