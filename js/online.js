@@ -412,7 +412,7 @@
   }
   function renderJoin() {
     screenEl.innerHTML = '<div class="card stack"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">الانضمام إلى غرفة</h2><label class="field-label" for="ojName">اسمك</label><input type="text" id="ojName" maxlength="20" placeholder="اكتب الاسم"><label class="field-label" for="ojCode">رمز الغرفة</label><input type="text" id="ojCode" maxlength="5" placeholder="مثال: A7K2P" style="text-transform:uppercase"><button class="btn btn-primary" id="ojGo">انضمام</button><button class="btn btn-ghost" id="ojBack">رجوع</button></div>';
-    document.getElementById("ojGo").onclick = joinRoom; document.getElementById("ojBack").onclick = function () { route("onlineMenu"); };
+    document.getElementById("ojGo").onclick = function () { joinRoom(); }; document.getElementById("ojBack").onclick = function () { route("onlineMenu"); };
   }
   async function joinRoom(roomId) {
     if (o.joining) return;
