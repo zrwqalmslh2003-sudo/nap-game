@@ -267,12 +267,11 @@
     }
     route("onlineReview");
     clearTimeout(o.nextRoundTimer);
-    o.nextRoundTimer = setTimeout(function () {
-      if (state.screen === "onlineReview" && o.round && o.round.status === "locked") {
-        if (o.round.number >= o.room.total_rounds) finishRoom();
-        else startNextRound();
-      }
-    }, 60000);
+    if (o.round.number < o.room.total_rounds) {
+      o.nextRoundTimer = setTimeout(function () {
+        if (state.screen === "onlineReview" && o.round && o.round.status === "locked") startNextRound();
+      }, 60000);
+    }
   }
   async function finishRoom() {
     clearTimeout(o.nextRoundTimer);
