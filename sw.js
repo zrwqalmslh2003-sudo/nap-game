@@ -1,4 +1,4 @@
-var CACHE_NAME = "nap-game-20260928-favicon";
+var CACHE_NAME = "nap-game-20260928-icons";
 var LOCAL_ASSETS = [
   "./",
   "./index.html",
