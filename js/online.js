@@ -390,7 +390,9 @@
     if (r.error) { o.creating = false; if (goButton) goButton.disabled = false; return fail(r.error.message); }
     var p = await client.from("players").insert({ id: meId, room_id: roomId, name: name, total_score: 0, connected: true }).select().single();
     if (p.error) { o.creating = false; if (goButton) goButton.disabled = false; return fail(p.error.message); }
-    o.room = r.data; o.me = p.data; saveOnlineSession(); setupRealtime(); route("onlineWaiting");
+    o.room = r.data; o.me = p.data; saveOnlineSession();
+    client.rpc("cleanup_stale_rooms").then(function () {}).catch(function () {});
+    setupRealtime(); route("onlineWaiting");
   }
   function renderJoin() {
     screenEl.innerHTML = '<div class="card stack"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">الانضمام إلى غرفة</h2><label class="field-label" for="ojName">اسمك</label><input type="text" id="ojName" maxlength="20" placeholder="اكتب الاسم"><label class="field-label" for="ojCode">رمز الغرفة</label><input type="text" id="ojCode" maxlength="5" placeholder="مثال: A7K2P" style="text-transform:uppercase"><button class="btn btn-primary" id="ojGo">انضمام</button><button class="btn btn-ghost" id="ojBack">رجوع</button></div>';
