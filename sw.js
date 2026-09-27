@@ -1,9 +1,11 @@
-var CACHE_NAME = "nap-game-20260927";
+var CACHE_NAME = "nap-game-20260927-png-icons";
 var LOCAL_ASSETS = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
-  "./icons/icon.svg",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
+  "./icons/icon-512-maskable.png",
   "./css/reset.css",
   "./css/variables.css",
   "./css/style.css",
