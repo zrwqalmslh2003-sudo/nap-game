@@ -5,14 +5,14 @@
   var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtdXR6eW5peGN4bXNvdGVpZHllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwOTc0OTksImV4cCI6MjEwNTY3MzQ5OX0.5m9y6pFyuojOFkBmoThQs3McRyRYCy_lMosCxsKdERk";
 
   var client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  var MAX_ONLINE_PLAYERS = 20;
+  var MAX_ONLINE_PLAYERS = 6;
   var screenEl = document.getElementById("screen");
   var o = {
     room: null, me: null, players: [], round: null, answers: {},
     submitted: {}, presence: {}, scores: {}, roundHistory: [],
     objections: {}, accepting: {}, seenObjectionIds: {}, objectionQueue: [],
     channels: [], timerId: null, nextRoundTimer: null, clockId: null, pollId: null, submitDebounce: null, typingThrottle: null,
-    closing: false, starting: false, submitting: false, joining: false, creating: false, lockedAt: 0,
+    closing: false, starting: false, submitting: false, joining: false, creating: false, selfKicked: false, lockedAt: 0, kicking: {},
     settings: { totalRounds: 3, roundDuration: 60 }
   };
 
@@ -34,7 +34,8 @@
   function nowRemaining() { return o.round && o.round.ends_at ? Math.max(0, Math.ceil((new Date(o.round.ends_at).getTime() - serverNow()) / 1000)) : 0; }
   function fmt(sec) { var m = Math.floor(sec / 60), s = sec % 60; return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0"); }
   function playerName(id) { var p = o.players.filter(function (x) { return x.id === id; })[0]; return p ? p.name : ""; }
-  function allSubmitted() { return o.players.length > 0 && o.players.every(function (p) { return !!o.submitted[p.id]; }); }
+  function activePlayers() { return o.players.filter(function (p) { return !p.kicked_at; }); }
+  function allSubmitted() { var ap = activePlayers(); return ap.length > 0 && ap.every(function (p) { return !!o.submitted[p.id]; }); }
 
   function fail(message) {
     clearTimers();
@@ -47,7 +48,9 @@
     clearTimers();
     o.channels.forEach(function (ch) { client.removeChannel(ch); });
     o.channels = [];
-    o.room = o.me = o.round = null; o.players = []; o.answers = {}; o.submitted = {}; o.presence = {}; o.scores = {}; o.roundHistory = []; o.objections = {}; o.accepting = {}; o.seenObjectionIds = {}; o.objectionQueue = []; o.closing = false; o.joining = false; o.creating = false;
+    o.room = o.me = o.round = null; o.players = []; o.answers = {}; o.submitted = {}; o.presence = {}; o.scores = {}; o.roundHistory = []; o.objections = {}; o.accepting = {}; o.seenObjectionIds = {}; o.objectionQueue = [];
+    o.closing = false; o.joining = false; o.creating = false; o.selfKicked = false;
+    var k = Object.keys(o.kicking); for (var ki = 0; ki < k.length; ki++) delete o.kicking[k[ki]];
   }
   function route(screen) { state.mode = "online"; window.goTo(screen); }
   function inputValue(id) { var el = document.getElementById(id); return el ? el.value : ""; }
@@ -61,6 +64,7 @@
     if (r.error || !r.data) { clearOnlineSession(); return alert("الغرفة السابقة غير متاحة"); }
     var p = await client.from("players").select("*").eq("id", saved.id).eq("room_id", r.data.id).maybeSingle();
     if (p.error || !p.data) { clearOnlineSession(); return alert("تعذر استئناف اللاعب السابق"); }
+    if (p.data.kicked_at) { clearOnlineSession(); return alert("تم إخراجك من الغرفة من قبل المضيف"); }
     o.room = r.data; o.me = p.data; setupRealtime();
     route(r.data.status === "waiting" ? "onlineWaiting" : "onlinePlaying");
     if (r.data.status === "playing") loadCurrentRound();
@@ -144,6 +148,18 @@
     var r = await client.from("players").select("*").eq("room_id", o.room.id).order("joined_at", { ascending: true });
     if (r.error) return fail(r.error.message);
     o.players = r.data || [];
+    if (o.me && !o.selfKicked) {
+      var mine = o.players.filter(function (p) { return p.id === o.me.id; })[0];
+      if (mine && mine.kicked_at) {
+        o.selfKicked = true;
+        clearInterval(o.timerId);
+        clearOnlineSession();
+        cleanup();
+        route("onlineMenu");
+        alert("تم إخراجك من الغرفة من قبل المضيف");
+        return;
+      }
+    }
     if (state.screen === "onlineWaiting") renderWaiting(); else updatePlayersStrip();
   }
   async function loadDictionaryWithRetry(letter) {
@@ -285,12 +301,25 @@
     o.typingThrottle = setTimeout(function () { o.typingThrottle = null; }, 1500);
   }
 
+  function kickButtonHTML(p) {
+    return (isHost() && p.id !== o.me.id)
+      ? '<button class="btn btn-ghost" data-kick-id="' + esc(p.id) + '" style="padding:4px 8px;font-size:16px;line-height:1;" title="طرد">✕</button>'
+      : '';
+  }
+  function wireKickButtons(container) {
+    Array.prototype.forEach.call(container.querySelectorAll("[data-kick-id]"), function (btn) {
+      btn.onclick = function () { kickPlayer(btn.dataset.kickId, btn); };
+    });
+  }
+
   function updatePlayersStrip() {
     var strip = document.getElementById("oStrip"); if (!strip) return;
-    strip.innerHTML = '<strong>اللاعبون</strong>' + o.players.map(function (p) {
+    var ap = activePlayers();
+    strip.innerHTML = '<strong>اللاعبون</strong>' + ap.map(function (p) {
       var status = o.submitted[p.id] || (o.presence[p.id] && o.presence[p.id].submitted) ? "تم الإرسال ✓" : (o.presence[p.id] && o.presence[p.id].typing ? "يكتب الآن…" : "يستعد");
-      return '<div class="leaderboard-row"><span class="lb-name">' + esc(p.name) + (p.id === o.me.id ? ' <span class="muted">(أنت)</span>' : '') + '<br><span class="muted" style="font-size:12px;">' + status + '</span></span><span class="lb-score">' + (p.total_score || 0) + '</span></div>';
+      return '<div class="leaderboard-row"><span class="lb-name">' + esc(p.name) + (p.id === o.me.id ? ' <span class="muted">(أنت)</span>' : '') + '<br><span class="muted" style="font-size:12px;">' + status + '</span></span>' + kickButtonHTML(p) + '<span class="lb-score">' + (p.total_score || 0) + '</span></div>';
     }).join("");
+    wireKickButtons(strip);
   }
 
   function renderMenu() {
@@ -335,11 +364,25 @@
     if (r.error || !r.data) { o.joining = false; if (goButton) goButton.disabled = false; return fail("الغرفة غير موجودة أو بدأت بالفعل"); }
     var count = await client.from("players").select("id", { count: "exact", head: true }).eq("room_id", r.data.id);
     if (count.error) { o.joining = false; if (goButton) goButton.disabled = false; return fail(count.error.message); }
-    if ((count.count || 0) >= MAX_ONLINE_PLAYERS) { o.joining = false; if (goButton) goButton.disabled = false; return fail("الغرفة ممتلئة (20 لاعبًا كحد أقصى)"); }
+    if ((count.count || 0) >= MAX_ONLINE_PLAYERS) { o.joining = false; if (goButton) goButton.disabled = false; return fail("الغرفة ممتلئة (6 لاعبين كحد أقصى)"); }
     var meId = uuid();
     var p = await client.from("players").insert({ id: meId, room_id: r.data.id, name: name, total_score: 0, connected: true }).select().single();
     if (p.error) { o.joining = false; if (goButton) goButton.disabled = false; return fail(p.error.message); }
     o.room = r.data; o.me = p.data; saveOnlineSession(); setupRealtime(); route("onlineWaiting");
+  }
+  async function kickPlayer(playerId, btn) {
+    if (o.kicking[playerId]) return;
+    if (!isHost() || !o.room || playerId === o.me.id) return;
+    var target = o.players.filter(function (p) { return p.id === playerId; })[0];
+    if (!target || target.kicked_at) return;
+    if (!confirm("هل تريد طرد " + target.name + " من الغرفة؟")) return;
+    o.kicking[playerId] = true;
+    if (btn) { btn.disabled = true; btn.textContent = "…"; }
+    var r = await client.from("players").update({ kicked_at: new Date().toISOString() }).eq("id", playerId).is("kicked_at", null).select().maybeSingle();
+    delete o.kicking[playerId];
+    if (r.error) { if (btn) { btn.disabled = false; btn.textContent = "✕"; } return fail(r.error.message); }
+    if (!r.data) { if (btn) { btn.disabled = false; btn.textContent = "✕"; } return; }
+    loadPlayers();
   }
   function renderWaiting() {
     if (!o.room) return renderMenu();
@@ -359,7 +402,8 @@
         setTimeout(function () { if (label) label.textContent = "نسخ الرمز"; }, 1600);
       }
     };
-    var list = document.getElementById("oWaitPlayers"); list.innerHTML = o.players.map(function (p) { return '<div class="leaderboard-row"><span class="lb-name">' + esc(p.name) + (p.id === o.room.host_id ? ' <span class="muted">(المضيف)</span>' : '') + '</span></div>'; }).join("");
+    var list = document.getElementById("oWaitPlayers"); list.innerHTML = activePlayers().map(function (p) { return '<div class="leaderboard-row"><span class="lb-name">' + esc(p.name) + (p.id === o.room.host_id ? ' <span class="muted">(المضيف)</span>' : '') + '</span>' + kickButtonHTML(p) + '</div>'; }).join("");
+    wireKickButtons(list);
   }
   async function startRoom() {
     if (!isHost() || o.players.length < 1 || o.starting) return;
@@ -479,12 +523,13 @@
   }
   function renderReview() {
     if (!o.round) return;
-    var rows = o.players.map(function (p) { var sc = o.scores[p.id] || {}; return '<div class="review-player"><div class="review-player-name"><span>' + esc(p.name) + '</span><span>' + roundTotalForPlayer(sc) + '</span></div>' + CATEGORIES.map(function (c) { var cell = sc[c.key] || { value: "", points: 0, status: "empty" }; var obj = findObjection(cell.value, c.key, p.id); var flag = cell.status === "not_in_dict" && p.id === o.me.id && !obj ? '<button class="btn btn-secondary" style="padding:4px 12px;font-size:13px;margin-inline-start:8px;border-radius:8px;width:auto;display:inline-flex;" data-object-category="' + esc(c.key) + '" data-object-owner="' + esc(p.id) + '" data-object-word="' + esc(cell.value) + '">اعتراض</button>' : ''; var cls = cell.points === 10 ? "unique" : cell.points === 5 ? "dup" : "zero"; return '<div class="review-row"><span class="cat">' + c.label + '</span><span class="ans">' + esc(cell.value || "—") + flag + '</span><span class="pts ' + cls + '">+' + cell.points + '</span></div>'; }).join("") + '</div>'; }).join("");
+    var rows = activePlayers().map(function (p) { var sc = o.scores[p.id] || {}; return '<div class="review-player"><div class="review-player-name"><span>' + esc(p.name) + '</span>' + kickButtonHTML(p) + '<span>' + roundTotalForPlayer(sc) + '</span></div>' + CATEGORIES.map(function (c) { var cell = sc[c.key] || { value: "", points: 0, status: "empty" }; var obj = findObjection(cell.value, c.key, p.id); var flag = cell.status === "not_in_dict" && p.id === o.me.id && !obj ? '<button class="btn btn-secondary" style="padding:4px 12px;font-size:13px;margin-inline-start:8px;border-radius:8px;width:auto;display:inline-flex;" data-object-category="' + esc(c.key) + '" data-object-owner="' + esc(p.id) + '" data-object-word="' + esc(cell.value) + '">اعتراض</button>' : ''; var cls = cell.points === 10 ? "unique" : cell.points === 5 ? "dup" : "zero"; return '<div class="review-row"><span class="cat">' + c.label + '</span><span class="ans">' + esc(cell.value || "—") + flag + '</span><span class="pts ' + cls + '">+' + cell.points + '</span></div>'; }).join("") + '</div>'; }).join("");
     var nextAction = o.round.number < o.room.total_rounds ? (isHost() ? '<button class="btn btn-primary" id="oNextRound" style="margin-top:16px;">الجولة التالية</button>' : '<p class="center-text muted" style="margin-top:16px;">بانتظار المضيف لبدء الجولة التالية…</p>') : '<p class="center-text muted" style="margin-top:16px;">انتهت الجولات…</p>';
     screenEl.innerHTML = '<div class="card"><p class="center-text muted">نتائج الجولة — الحرف <strong style="color:var(--accent-deep);font-size:20px;">' + esc(o.round.letter) + '</strong></p>' + rows + nextAction + '</div>';
     Array.prototype.forEach.call(screenEl.querySelectorAll("[data-object-category]"), function (button) {
       button.onclick = function () { raiseObjection({ value: button.dataset.objectWord, category: button.dataset.objectCategory }, { id: button.dataset.objectOwner }); };
     });
+    wireKickButtons(screenEl);
     var nextBtn = document.getElementById("oNextRound");
     if (nextBtn) nextBtn.onclick = function () {
       nextBtn.disabled = true;
@@ -494,7 +539,7 @@
     };
   }
   function renderResults() {
-    var ranked = o.players.slice().sort(function (a, b) { return (b.total_score || 0) - (a.total_score || 0); });
+    var ranked = activePlayers().slice().sort(function (a, b) { return (b.total_score || 0) - (a.total_score || 0); });
     screenEl.innerHTML = '<div class="card"><div class="final-title"><span class="trophy">🏆</span><h2 style="font-family:Cairo,sans-serif;font-weight:800;">النتائج النهائية</h2></div>' + ranked.map(function (p, i) { return '<div class="leaderboard-row"><span class="rank-medal">' + (["🥇", "🥈", "🥉"][i] || (i + 1)) + '</span><span class="lb-name">' + esc(p.name) + '</span><span class="lb-score">' + (p.total_score || 0) + '</span></div>'; }).join("") + '<button class="btn btn-primary" id="orHome" style="margin-top:18px;">الرئيسية</button></div>';
     document.getElementById("orHome").onclick = function () { clearOnlineSession(); cleanup(); state.mode = "local"; window.goTo("home"); };
   }
