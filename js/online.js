@@ -424,7 +424,7 @@
     var query = client.from("rooms").select("*").eq("status", "waiting");
     var r = await (roomId ? query.eq("id", roomId).maybeSingle() : query.eq("code", roomCode).maybeSingle());
     if (r.error || !r.data) { o.joining = false; if (goButton) goButton.disabled = false; return fail("الغرفة غير موجودة أو بدأت بالفعل"); }
-    var count = await client.from("players").select("id", { count: "exact", head: true }).eq("room_id", r.data.id).is("kicked_at", null);
+    var count = await client.from("players").select("id", { count: "exact", head: true }).eq("room_id", r.data.id).is("kicked_at", null).eq("connected", true);
     if (count.error) { o.joining = false; if (goButton) goButton.disabled = false; return fail(count.error.message); }
     if ((count.count || 0) >= MAX_ONLINE_PLAYERS) { o.joining = false; if (goButton) goButton.disabled = false; return fail("الغرفة ممتلئة (6 لاعبين كحد أقصى)"); }
     var meId = uuid();
@@ -449,7 +449,7 @@
     if (r.error) { o.publicLoading = false; if (box) box.innerHTML = '<p class="muted center-text">تعذر تحميل الغرف العامة.</p>'; return; }
     var rooms = r.data || [], ids = rooms.map(function (x) { return x.id; }), countByRoom = {};
     if (ids.length) {
-      var counts = await client.from("players").select("room_id").in("room_id", ids).is("kicked_at", null);
+      var counts = await client.from("players").select("room_id").in("room_id", ids).is("kicked_at", null).eq("connected", true);
       if (counts.error) { o.publicLoading = false; if (box) box.innerHTML = '<p class="muted center-text">تعذر تحميل اللاعبين.</p>'; return; }
       (counts.data || []).forEach(function (row) { countByRoom[row.room_id] = (countByRoom[row.room_id] || 0) + 1; });
     }
@@ -516,7 +516,7 @@
     wireKickButtons(list);
   }
   async function startRoom() {
-    if (!isHost() || o.players.length < 1 || o.starting) return;
+    if (!isHost() || activePlayers().length < 2 || o.starting) return;
     o.starting = true;
     var existing = await client.from("rounds").select("id").eq("room_id", o.room.id).eq("number", 1).maybeSingle();
     if (existing.error) { o.starting = false; return fail(existing.error.message); }
