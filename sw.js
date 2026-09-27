@@ -1,4 +1,4 @@
-var CACHE_NAME = "nap-game-20260928-hotfix1";
+var CACHE_NAME = "nap-game-20260928c";
 var LOCAL_ASSETS = [
   "./",
   "./index.html",
@@ -10,13 +10,13 @@ var LOCAL_ASSETS = [
   "./css/variables.css",
   "./css/style.css",
   "./js/normalization.js",
-  "./js/letters.js?v=20260928b",
+  "./js/letters.js?v=20260928c",
   "./js/dictionary.js",
   "./js/validation.js",
   "./js/scoring.js",
-  "./js/game.js?v=c5cb9ef",
-  "./js/online.js?v=20260928",
-  "./js/app.js?v=c5cb9ef"
+  "./js/game.js?v=20260928c",
+  "./js/online.js?v=20260928c",
+  "./js/app.js?v=20260928c"
 ];
 
 self.addEventListener("install", function (event) {

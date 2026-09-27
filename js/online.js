@@ -13,14 +13,12 @@
     objections: {}, accepting: {}, seenObjectionIds: {}, objectionQueue: [],
     channels: [], timerId: null, nextRoundTimer: null, clockId: null, pollId: null, publicPollId: null, submitDebounce: null, typingThrottle: null,
     closing: false, starting: false, submitting: false, joining: false, creating: false, selfKicked: false, lockedAt: 0, kicking: {}, reporting: {}, publicLoading: false,
-    settings: { totalRounds: 3, roundDuration: 60, isPublic: false, roomName: "" }
+    settings: { totalRounds: 3, roundDuration: 60, isPublic: false }
   };
 
   var clockSkewMs = 0;
-  var BLOCKED_ROOM_WORDS = ["قحبه", "شرموط", "شرموطه", "خرا", "كس", "نيك", "زب", "fuck", "shit", "porn", "dick", "cunt"];
-  function blockedRoomName(name) {
-    var normalized = normalizeArabic(name).toLowerCase();
-    return BLOCKED_ROOM_WORDS.some(function (word) { return normalized.indexOf(normalizeArabic(word).toLowerCase()) >= 0; });
+  function generateRoomName() {
+    return "الغرفة " + Math.floor(100 + Math.random() * 900);
   }
   async function syncClock() {
     try {
@@ -61,9 +59,30 @@
   }
   function route(screen) { if (screen !== "onlinePublicRooms") clearInterval(o.publicPollId); state.mode = "online"; window.goTo(screen); }
   function inputValue(id) { var el = document.getElementById(id); return el ? el.value : ""; }
-  function saveOnlineSession() { try { sessionStorage.setItem("nap.online.me", JSON.stringify({ id: o.me.id, name: o.me.name, roomCode: o.room.code })); } catch (e) {} }
-  function clearOnlineSession() { try { sessionStorage.removeItem("nap.online.me"); } catch (e) {} }
-  function readOnlineSession() { try { return JSON.parse(sessionStorage.getItem("nap.online.me") || "null"); } catch (e) { return null; } }
+  function saveOnlineSession() {
+    try {
+      var payload = { id: o.me.id, name: o.me.name, roomCode: o.room.code, savedAt: Date.now() };
+      localStorage.setItem("nap.online.me", JSON.stringify(payload));
+      sessionStorage.setItem("nap.online.me", JSON.stringify(payload));
+    } catch (e) {}
+  }
+  function clearOnlineSession() {
+    try { localStorage.removeItem("nap.online.me"); } catch (e) {}
+    try { sessionStorage.removeItem("nap.online.me"); } catch (e) {}
+  }
+  function readOnlineSession() {
+    try {
+      var raw = sessionStorage.getItem("nap.online.me") || localStorage.getItem("nap.online.me");
+      if (!raw) return null;
+      var data = JSON.parse(raw);
+      if (!data.savedAt || Date.now() - data.savedAt > 60 * 60 * 1000) {
+        localStorage.removeItem("nap.online.me");
+        sessionStorage.removeItem("nap.online.me");
+        return null;
+      }
+      return data;
+    } catch (e) { return null; }
+  }
   function handleSelfKicked() {
     if (o.selfKicked) return true;
     o.selfKicked = true;
@@ -368,7 +387,7 @@
 
   function renderCreate() {
     o.settings.isPublic = false; o.settings.roomName = "";
-    screenEl.innerHTML = '<div class="card stack"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">إنشاء غرفة</h2><label class="field-label" for="ocName">اسمك</label><input type="text" id="ocName" maxlength="20" placeholder="اكتب الاسم"><span class="field-label">نوع الغرفة</span><div class="choice-row" id="ocVisibility"><div class="choice active" data-v="private">خاصة</div><div class="choice" data-v="public">عامة</div></div><div id="ocPublicFields" style="display:none;"><label class="field-label" for="ocRoomName">اسم الغرفة العامة</label><input type="text" id="ocRoomName" maxlength="40" placeholder="مثال: أصدقاء الحي"><p class="muted" id="ocRoomError" style="color:var(--danger,#b42318);"></p></div><span class="field-label">مدة الجولة</span><div class="choice-row" id="ocDuration"><div class="choice" data-v="30">30</div><div class="choice active" data-v="60">60</div><div class="choice" data-v="90">90</div></div><span class="field-label">عدد الجولات</span><div class="choice-row" id="ocRounds"><div class="choice active" data-v="3">3</div><div class="choice" data-v="5">5</div><div class="choice" data-v="10">10</div></div><button class="btn btn-primary" id="ocGo">إنشاء الغرفة</button><button class="btn btn-ghost" id="ocBack">رجوع</button></div>';
+    screenEl.innerHTML = '<div class="card stack"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">إنشاء غرفة</h2><label class="field-label" for="ocName">اسمك</label><input type="text" id="ocName" maxlength="20" placeholder="اكتب الاسم"><span class="field-label">نوع الغرفة</span><div class="choice-row" id="ocVisibility"><div class="choice active" data-v="private">خاصة</div><div class="choice" data-v="public">عامة</div></div><div id="ocPublicFields" style="display:none;"><p class="muted">سيُسمّى تلقائيًا، مثل: الغرفة 575</p></div><span class="field-label">مدة الجولة</span><div class="choice-row" id="ocDuration"><div class="choice" data-v="30">30</div><div class="choice active" data-v="60">60</div><div class="choice" data-v="90">90</div></div><span class="field-label">عدد الجولات</span><div class="choice-row" id="ocRounds"><div class="choice active" data-v="3">3</div><div class="choice" data-v="5">5</div><div class="choice" data-v="10">10</div></div><button class="btn btn-primary" id="ocGo">إنشاء الغرفة</button><button class="btn btn-ghost" id="ocBack">رجوع</button></div>';
     document.getElementById("ocVisibility").onclick = function (e) { var n = e.target.closest(".choice"); if (!n) return; o.settings.isPublic = n.dataset.v === "public"; document.getElementById("ocPublicFields").style.display = o.settings.isPublic ? "block" : "none"; Array.prototype.forEach.call(this.children, function (x) { x.classList.toggle("active", x === n); }); };
     document.getElementById("ocDuration").onclick = function (e) { var n = e.target.closest(".choice"); if (!n) return; o.settings.roundDuration = Number(n.dataset.v); Array.prototype.forEach.call(this.children, function (x) { x.classList.toggle("active", x === n); }); };
     document.getElementById("ocRounds").onclick = function (e) { var n = e.target.closest(".choice"); if (!n) return; o.settings.totalRounds = Number(n.dataset.v); Array.prototype.forEach.call(this.children, function (x) { x.classList.toggle("active", x === n); }); };
@@ -378,10 +397,7 @@
   async function createRoom() {
     if (o.creating) return;
     var name = inputValue("ocName").trim(); if (name.length < 2) return alert("اكتب اسمًا من حرفين على الأقل");
-    var roomName = inputValue("ocRoomName").trim(), errorEl = document.getElementById("ocRoomError");
-    if (o.settings.isPublic && (roomName.length < 2 || roomName.length > 40)) { if (errorEl) errorEl.textContent = "اكتب اسمًا للغرفة بين حرفين و40 حرفًا."; return; }
-    if (o.settings.isPublic && blockedRoomName(roomName)) { if (errorEl) errorEl.textContent = "الاسم يحتاج تعديل بسيط، جربي صياغة ثانية."; return; }
-    o.settings.roomName = roomName;
+    o.settings.roomName = o.settings.isPublic ? generateRoomName() : "";
     cleanup();
     o.creating = true;
     var goButton = document.getElementById("ocGo"); if (goButton) goButton.disabled = true;
