@@ -20,12 +20,18 @@
   window.addEventListener("DOMContentLoaded", function () {
     var btn = document.getElementById("themeToggle");
     if (!btn) return;
+    function updateThemeButton() {
+      var dark = root.getAttribute("data-theme") === "dark";
+      btn.setAttribute("aria-label", dark ? "تفعيل الوضع الفاتح" : "تفعيل الوضع الداكن");
+      btn.setAttribute("title", dark ? "الوضع الفاتح" : "الوضع الداكن");
+      btn.classList.toggle("is-dark", dark);
+    }
+    updateThemeButton();
     btn.onclick = function () {
       var current = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
       root.setAttribute("data-theme", current);
       localStorage.setItem("nap.theme", current);
-      btn.setAttribute("aria-label", current === "dark" ? "تبديل الوضع الفاتح" : "تبديل الوضع الداكن");
-      btn.setAttribute("title", current === "dark" ? "الوضع الفاتح" : "الوضع الداكن");
+      updateThemeButton();
     };
   });
 })();
@@ -46,7 +52,7 @@
   <header class="top">
     <span class="brand">اسم • حيوان • نبات</span>
     <span class="round-badge hidden" id="roundBadge"></span>
-    <button id="themeToggle" type="button" aria-label="تبديل الوضع الداكن" title="الوضع الداكن">
+    <button id="themeToggle" type="button" aria-label="تفعيل الوضع الداكن" title="الوضع الداكن">
       <span class="icon-sun" aria-hidden="true">☀</span>
       <span class="icon-moon" aria-hidden="true">☾</span>
     </button>

@@ -1,4 +1,4 @@
-var CACHE_NAME = "nap-game-20260927-dark";
+var CACHE_NAME = "nap-game-20260927-theme-glow";
 var LOCAL_ASSETS = [
   "./",
   "./index.html",

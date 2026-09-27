@@ -30,11 +30,13 @@ body {
 header.top { display: flex; align-items: center; justify-content: space-between; padding: 6px 4px 14px; position: relative; z-index: 1; }
 .brand { font-family: 'Cairo', sans-serif; font-weight: 700; font-size: 22px; color: var(--accent-deep); }
 .round-badge { font-size: 14px; color: var(--ink-soft); background: var(--surface); border: 1px solid var(--paper-line); border-radius: 999px; padding: 4px 12px; }
-#themeToggle { background: transparent; border: none; color: var(--ink); font-size: 22px; cursor: pointer; padding: 4px 8px; }
+#themeToggle { display: inline-flex; width: 42px; height: 42px; align-items: center; justify-content: center; flex: 0 0 42px; border: 2px solid var(--accent-warm); border-radius: 50%; padding: 0; background: var(--surface); color: var(--accent-warm); box-shadow: 0 0 6px var(--accent-warm), 0 0 16px color-mix(in srgb, var(--accent-warm) 55%, transparent); cursor: pointer; font-size: 22px; line-height: 1; transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease; }
+#themeToggle:hover { transform: scale(1.08); box-shadow: 0 0 8px var(--accent-warm), 0 0 22px color-mix(in srgb, var(--accent-warm) 70%, transparent); }
+#themeToggle:active { transform: scale(0.96); }
 #themeToggle .icon-sun { display: none; }
-[data-theme="dark"] #themeToggle .icon-sun { display: inline; }
-[data-theme="dark"] #themeToggle .icon-moon { display: none; }
-#themeToggle:focus-visible { outline: 3px solid var(--accent-warm); outline-offset: 2px; border-radius: 6px; }
+#themeToggle.is-dark .icon-sun { display: inline; }
+#themeToggle.is-dark .icon-moon { display: none; }
+#themeToggle:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
 
 .card { background: var(--surface); border: 1px solid var(--paper-line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 22px 18px; position: relative; z-index: 1; animation: card-in 180ms ease-out; }
 .card + .card { margin-top: 14px; }
