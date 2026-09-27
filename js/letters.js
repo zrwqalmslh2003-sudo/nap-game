@@ -1,7 +1,7 @@
 "use strict";
 
 var AVAILABLE_LETTERS = [];
-var EASY_LETTERS = [];
+var EASY_LETTERS_BROKEN = [];
 var HARD_LETTERS = [];
 
 var _MANIFEST_URL = "https://raw.githubusercontent.com/zrwqalmslh2003-sudo/nap-dictionary/main/data/manifest.json";
@@ -25,12 +25,12 @@ async function loadAvailableLetters() {
     if (file && present[file]) newHard.push(l);
   });
   AVAILABLE_LETTERS = newEasy.concat(newHard);
-  EASY_LETTERS = newEasy;
+  EASY_LETTERS_BROKEN = newEasy;
   HARD_LETTERS = newHard;
 }
 
 function getLetterPool(difficulty) {
-  return difficulty === "hard" ? HARD_LETTERS : EASY_LETTERS;
+  return difficulty === "hard" ? HARD_LETTERS : EASY_LETTERS_BROKEN;
 }
 
 function getRandomLetter(exclude, difficulty) {
