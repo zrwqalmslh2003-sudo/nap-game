@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">اسم حيوان نبات</title>
+  <desc id="desc">أيقونة مؤقتة للعبة اسم حيوان نبات جماد بلاد</desc>
+  <rect width="512" height="512" rx="112" fill="#fdf6ec"/>
+  <rect x="56" y="56" width="400" height="400" rx="88" fill="#2f7359"/>
+  <circle cx="256" cy="188" r="74" fill="#f5c95d"/>
+  <path d="M214 190c17-22 67-22 84 0" fill="none" stroke="#2f7359" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="232" cy="174" r="9" fill="#2f7359"/>
+  <circle cx="280" cy="174" r="9" fill="#2f7359"/>
+  <text x="256" y="340" text-anchor="middle" direction="rtl" fill="#fdf6ec" font-family="Arial, sans-serif" font-size="48" font-weight="700">اسم</text>
+  <text x="256" y="395" text-anchor="middle" direction="rtl" fill="#fdf6ec" font-family="Arial, sans-serif" font-size="38" font-weight="700">حيوان نبات</text>
+</svg>
