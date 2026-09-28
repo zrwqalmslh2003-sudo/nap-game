@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-node --check js/online.js
-node --check js/game.js
-node --check js/letters.js
+for f in js/*.js; do
+  node --check "$f"
+done
 
 # Cross-file symbol resolution. `node --check` is per file, so a file can be
 # valid while the game throws at runtime -- that is how 489f894 shipped broken
