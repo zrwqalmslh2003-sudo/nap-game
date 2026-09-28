@@ -101,8 +101,8 @@
     if (p.error || !p.data) { clearOnlineSession(); return alert("تعذر استئناف اللاعب السابق"); }
     if (p.data.kicked_at) { clearOnlineSession(); return alert("تم إخراجك من الغرفة من قبل المضيف"); }
     o.room = r.data; o.me = p.data; setupRealtime();
-    route(r.data.status === "waiting" ? "onlineWaiting" : "onlinePlaying");
-    if (r.data.status === "playing") loadCurrentRound();
+    if (r.data.status === "waiting") route("onlineWaiting");
+    else await loadCurrentRound();
   }
 
   async function setupRealtime() {
@@ -663,7 +663,7 @@
   window.Online = { hasSession: function () { var s = readOnlineSession(); return !!(s && s.roomCode && s.id); }, render: function (screen) { if (screen === "onlineMenu") renderMenu(); else if (screen === "onlineCreate") renderCreate(); else if (screen === "onlineJoin") renderJoin(); else if (screen === "onlinePublicRooms") renderPublicRooms(); else if (screen === "onlineWaiting") renderWaiting(); else if (screen === "onlinePlaying") renderPlaying(); else if (screen === "onlineReview") renderReview(); else if (screen === "onlineResults") { loadPlayers().then(renderResults); } } };
   window.addEventListener("load", async function () {
     // app.js shows a "restoring" placeholder (screen "onlineResume") when the URL hash points at an online screen.
-    function pendingFallback() { if (state.screen === "onlineResume") { state.mode = "local"; window.goTo("home"); } }
+    function pendingFallback() { if (state.screen === "onlineResume" && !o.room) { state.mode = "local"; window.goTo("home"); } }
     var saved = readOnlineSession();
     if (!saved || !saved.roomCode || !saved.id) { pendingFallback(); return; }
     try {
