@@ -8,23 +8,107 @@
   let lastCountdownValue = null;
   let tickTimer = null;
 
+  /* ---------- hash routing + local-game persistence ---------- */
+  const SESSION_KEY = "nap_game_session_v1";
+  const SESSION_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+  const LOCAL_SCREENS = ["home", "setup", "players", "roundReady", "playing", "review", "roundResults", "finalResults"];
+  const TIMED_SCREENS = ["roundReady", "playing"];
+  const ONLINE_MENU_SCREENS = ["onlineMenu", "onlineCreate", "onlineJoin", "onlinePublicRooms"];
+  const SNAPSHOT_KEYS = ["settings", "playerNames", "players", "round", "turnOrder", "currentPlayerIndex",
+    "answers", "roundScores", "roundHistory", "tieBreaker", "dictionaryMissing"];
+  let saveTimer = null;
+
+  function screenFromHash() {
+    const m = /^#\/([A-Za-z]+)/.exec(window.location.hash || "");
+    return m ? m[1] : null;
+  }
+  function writeHash(screen) {
+    const h = "#/" + screen;
+    if (window.location.hash === h) return;
+    try { window.history.replaceState(null, "", h); } catch (e) { window.location.hash = h; }
+  }
+  function saveSession() {
+    if (state.mode === "online" || state.screen === "home") return;
+    try {
+      const data = {};
+      SNAPSHOT_KEYS.forEach(function (k) { data[k] = state[k]; });
+      localStorage.setItem(SESSION_KEY, JSON.stringify({
+        v: 1,
+        savedAt: Date.now(),
+        screen: state.screen,
+        data: data,
+        turn: { endAt: state.turn.endAt, duration: state.turn.duration },
+        countdown: { endAt: state.countdown.endAt }
+      }));
+    } catch (e) { /* storage full or blocked: the game still works, it just can't resume */ }
+  }
+  function clearSession() {
+    clearTimeout(saveTimer);
+    try { localStorage.removeItem(SESSION_KEY); } catch (e) { /* ignore */ }
+  }
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveSession, 250);
+  }
+  // Can this local screen be shown with the data currently in state?
+  function screenReady(screen) {
+    switch (screen) {
+      case "home": case "setup": return true;
+      case "players": return state.playerNames.some(function (n) { return (n || "").trim().length > 0; });
+      case "roundReady": case "playing":
+        return state.turnOrder.length > 0 && !!state.round.letter && state.players.length > 0;
+      case "review": case "roundResults":
+        return state.turnOrder.length > 0 && Object.keys(state.roundScores || {}).length > 0;
+      case "finalResults": return state.players.length > 0;
+      default: return false;
+    }
+  }
+
   window.goTo = function goTo(screen) {
     state.screen = screen;
+    writeHash(screen);
+    if (state.mode !== "online") {
+      if (screen === "home") clearSession(); else saveSession();
+    }
     render();
   };
+  function waitForActivation(worker, timeoutMs) {
+    return new Promise(function (resolve) {
+      if (!worker || worker.state === "activated") return resolve();
+      const timer = setTimeout(resolve, timeoutMs);
+      worker.addEventListener("statechange", function () {
+        if (worker.state === "activated" || worker.state === "redundant") { clearTimeout(timer); resolve(); }
+      });
+    });
+  }
   async function refreshPage() {
     const button = document.getElementById("pageRefresh");
     if (!button || button.disabled) return;
+    saveSession(); // make sure the latest answers survive the reload
+    const original = button.innerHTML;
     button.disabled = true;
     button.textContent = "…";
     try {
       if ("serviceWorker" in navigator) {
         const registration = await navigator.serviceWorker.getRegistration();
-        if (registration) await registration.update();
+        if (registration) {
+          await registration.update();
+          const pending = registration.installing || registration.waiting;
+          if (pending) {
+            pending.postMessage("SKIP_WAITING");
+            await waitForActivation(pending, 4000);
+          }
+        }
+      }
+      if (window.caches) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(function (k) { return caches.delete(k); }));
       }
     } catch (e) {
-      console.warn("service worker update failed", e);
+      console.warn("refresh cleanup failed", e);
     }
+    // Reload; if the page is still here after a moment, give the button back.
+    setTimeout(function () { button.disabled = false; button.innerHTML = original; }, 5000);
     window.location.reload();
   }
 
@@ -473,7 +557,71 @@
   }
 
   /* init */
+
+  // Save typed answers/settings shortly after any interaction (handlers run first, then this).
+  ["input", "change", "click"].forEach(function (evt) {
+    screenEl.addEventListener(evt, function () { if (state.mode !== "online") scheduleSave(); });
+  });
+  window.addEventListener("pagehide", saveSession);
+
+  async function restoreLocalSession(target) {
+    let snap = null;
+    try { snap = JSON.parse(localStorage.getItem(SESSION_KEY)); } catch (e) { snap = null; }
+    if (!snap || snap.v !== 1 || snap.screen !== target || !snap.data) return false;
+    if (Date.now() - snap.savedAt > SESSION_MAX_AGE_MS) return false;
+
+    SNAPSHOT_KEYS.forEach(function (k) { if (snap.data[k] !== undefined) state[k] = snap.data[k]; });
+    state.turn.endAt = (snap.turn && snap.turn.endAt) || null;
+    state.turn.duration = (snap.turn && snap.turn.duration) || state.turn.duration;
+    state.countdown.endAt = (snap.countdown && snap.countdown.endAt) || null;
+    state.mode = "local";
+    if (!screenReady(target)) return false;
+
+    if (TIMED_SCREENS.indexOf(target) !== -1) {
+      try { if (typeof loadAvailableLetters === "function") await loadAvailableLetters(); } catch (e) { /* keep current pools */ }
+      const dict = await loadDictionary(state.round.letter);
+      state.dictionaryMissing = (dict === null);
+    }
+    if (target === "roundReady") startTurnCountdown();
+    else if (target === "playing") resumePlayerTurn();
+    else goTo(target);
+    return true;
+  }
+
+  // Manual hash edits / external navigation. Timed screens and online games are never left this way.
+  window.addEventListener("hashchange", function () {
+    const target = screenFromHash();
+    if (!target || target === state.screen) return;
+    const allowed = state.mode !== "online" &&
+      TIMED_SCREENS.indexOf(state.screen) === -1 &&
+      LOCAL_SCREENS.indexOf(target) !== -1 &&
+      TIMED_SCREENS.indexOf(target) === -1 &&
+      screenReady(target);
+    if (allowed) goTo(target); else writeHash(state.screen);
+  });
+
+  async function init() {
+    if (pageRefreshButton) pageRefreshButton.onclick = refreshPage;
+    const target = screenFromHash();
+
+    if (target && target.indexOf("online") === 0) {
+      state.mode = "online";
+      if (ONLINE_MENU_SCREENS.indexOf(target) !== -1) return goTo(target);
+      if (window.Online && window.Online.hasSession && window.Online.hasSession()) {
+        // online.js resumes the room on window load and routes to the right screen.
+        state.screen = "onlineResume";
+        screenEl.innerHTML = '<div class="card center-text"><p class="muted">جارٍ استعادة الغرفة…</p></div>';
+        return;
+      }
+      state.mode = "local";
+    } else if (target && target !== "home" && LOCAL_SCREENS.indexOf(target) !== -1) {
+      try { if (await restoreLocalSession(target)) return; } catch (e) { console.warn("restore failed", e); }
+      clearSession();
+    }
+    state.mode = "local";
+    goTo("home");
+  }
+
   const pageRefreshButton = document.getElementById("pageRefresh");
-  if (pageRefreshButton) pageRefreshButton.onclick = refreshPage;
-  render();
+  init();
 })();

@@ -136,7 +136,11 @@ function startPlayerTurn() {
   state.turn.duration = currentTurnDuration();
   state.turn.endAt = Date.now() + state.turn.duration * 1000;
   goTo("playing");
+  runTurnTimer();
+}
 
+function runTurnTimer() {
+  clearInterval(state.turn.intervalId);
   state.turn.intervalId = setInterval(function () {
     const remainingMs = state.turn.endAt - Date.now();
     if (remainingMs <= 0) {
@@ -146,6 +150,19 @@ function startPlayerTurn() {
     }
     renderTimerOnly(Math.ceil(remainingMs / 1000));
   }, 200);
+}
+
+// After a page reload: keep the ORIGINAL deadline (turn.endAt is an absolute timestamp),
+// so refreshing can never grant extra time. If it already passed, the turn ends now.
+function resumePlayerTurn() {
+  clearInterval(state.turn.intervalId);
+  state.turn.locked = false;
+  if (!state.turn.endAt || state.turn.endAt <= Date.now()) {
+    finishPlayerTurn(true);
+    return;
+  }
+  goTo("playing");
+  runTurnTimer();
 }
 
 function turnSecondsRemaining() {
