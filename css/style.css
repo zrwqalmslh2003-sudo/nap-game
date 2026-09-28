@@ -28,6 +28,7 @@ body {
 .margin-line { position: absolute; top: 0; bottom: 0; right: 46px; width: 2px; background: var(--paper-margin); opacity: 0.45; }
 
 header.top { display: flex; align-items: center; justify-content: space-between; padding: 6px 4px 14px; position: relative; z-index: 1; }
+.header-actions { display: inline-flex; align-items: center; gap: 8px; }
 .brand { font-family: 'Cairo', sans-serif; font-weight: 700; font-size: 22px; color: var(--accent-deep); }
 .round-badge { font-size: 14px; color: var(--ink-soft); background: var(--surface); border: 1px solid var(--paper-line); border-radius: 999px; padding: 4px 12px; }
 #themeToggle { display: inline-flex; width: 42px; height: 42px; align-items: center; justify-content: center; flex: 0 0 42px; border: 2px solid var(--accent-warm); border-radius: 50%; padding: 0; background: var(--surface); color: var(--accent-warm); box-shadow: 0 0 6px var(--accent-warm), 0 0 16px color-mix(in srgb, var(--accent-warm) 55%, transparent); cursor: pointer; font-size: 22px; line-height: 1; transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease; }
@@ -37,6 +38,11 @@ header.top { display: flex; align-items: center; justify-content: space-between;
 #themeToggle.is-dark .icon-sun { display: inline; }
 #themeToggle.is-dark .icon-moon { display: none; }
 #themeToggle:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+#pageRefresh { display: inline-flex; width: 42px; height: 42px; align-items: center; justify-content: center; flex: 0 0 42px; border: 2px solid var(--accent-deep); border-radius: 50%; padding: 0; background: var(--surface); color: var(--accent-deep); box-shadow: 0 0 6px var(--accent-deep), 0 0 16px color-mix(in srgb, var(--accent-deep) 40%, transparent); cursor: pointer; font-size: 25px; line-height: 1; transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease; }
+#pageRefresh:hover { transform: scale(1.08); box-shadow: 0 0 8px var(--accent-deep), 0 0 22px color-mix(in srgb, var(--accent-deep) 55%, transparent); }
+#pageRefresh:active { transform: scale(0.96); }
+#pageRefresh:disabled { opacity: 0.6; cursor: wait; }
+#pageRefresh:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
 
 .card { background: var(--surface); border: 1px solid var(--paper-line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 22px 18px; position: relative; z-index: 1; animation: card-in 180ms ease-out; }
 .card + .card { margin-top: 14px; }
