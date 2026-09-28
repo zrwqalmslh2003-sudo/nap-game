@@ -3,6 +3,9 @@ const CATEGORIES = [
   { key: "nameFemale", label: "اسم بنت", dictCat: "name_female" },
   { key: "animal",  label: "حيوان" },
   { key: "plant",   label: "نبات" },
+  // القرار متعمد: فئة "جماد" لا تعتمد على القاموس الحالي؛
+  // 13 من 28 حرفًا لها تغطية صالحة، والقاموس يضم 259 كلمة فقط،
+  // لذلك يُسمح بالتحقق من طول الإجابة بدل رفض إجابات صحيحة خارج القاموس.
   { key: "object",  label: "جماد", skipDict: true, minLen: 3 },
   { key: "country", label: "بلاد" }
 ];
