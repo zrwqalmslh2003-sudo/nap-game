@@ -12,6 +12,21 @@
     state.screen = screen;
     render();
   };
+  async function refreshPage() {
+    const button = document.getElementById("pageRefresh");
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    button.textContent = "…";
+    try {
+      if ("serviceWorker" in navigator) {
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (registration) await registration.update();
+      }
+    } catch (e) {
+      console.warn("service worker update failed", e);
+    }
+    window.location.reload();
+  }
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -458,5 +473,7 @@
   }
 
   /* init */
+  const pageRefreshButton = document.getElementById("pageRefresh");
+  if (pageRefreshButton) pageRefreshButton.onclick = refreshPage;
   render();
 })();
