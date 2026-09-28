@@ -549,7 +549,7 @@
 
   function renderPlaying() {
     var rem = nowRemaining();
-    screenEl.innerHTML = '<div class="card" id="onlineForm"><div class="play-top"><span class="letter-chip">' + esc(o.round.letter) + '</span><span class="timer' + (rem <= 10 ? ' urgent' : '') + '" id="oTimer">' + fmt(rem) + '</span></div><p class="center-text muted" style="margin:2px 0 14px;">الجولة ' + o.round.number + ' — اكتب إجاباتك ثم اضغط انتهيت</p>' + CATEGORIES.map(function (c) { return '<div class="answer-block"><label for="of_' + c.key + '">' + c.label + '</label><input type="text" id="of_' + c.key + '" placeholder="' + esc(o.round.letter) + '..."></div>'; }).join("") + '<button class="btn btn-primary" id="ofFinish">انتهيت ✓</button></div><div class="card" id="oStrip"></div>';
+    screenEl.innerHTML = '<div class="card" id="onlineForm"><div class="play-top"><span class="letter-chip">' + esc(o.round.letter) + '</span><span class="timer' + (rem <= 10 ? ' urgent' : '') + '" id="oTimer">' + fmt(rem) + '</span></div><p class="center-text muted" style="margin:2px 0 14px;">الجولة ' + o.round.number + ' — اكتب إجاباتك ثم اضغط انتهيت</p>' + CATEGORIES.map(function (c) { return '<div class="answer-block"><label for="of_' + c.key + '">' + c.label + '</label><input type="text" id="of_' + c.key + '" maxlength="40" placeholder="' + esc(o.round.letter) + '..."></div>'; }).join("") + '<button class="btn btn-primary" id="ofFinish">انتهيت ✓</button></div><div class="card" id="oStrip"></div>';
     CATEGORIES.forEach(function (c) { var el = document.getElementById("of_" + c.key); el.oninput = trackTyping; });
     document.getElementById("ofFinish").onclick = submitOnline; updatePlayersStrip(); startOnlineTimer();
   }
