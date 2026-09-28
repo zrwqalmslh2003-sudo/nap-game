@@ -453,8 +453,6 @@
       if (counts.error) { o.publicLoading = false; if (box) box.innerHTML = '<p class="muted center-text">تعذر تحميل اللاعبين.</p>'; return; }
       (counts.data || []).forEach(function (row) { countByRoom[row.room_id] = (countByRoom[row.room_id] || 0) + 1; });
     }
-    var cutoff = Date.now() - 2 * 60 * 60 * 1000, stale = rooms.filter(function (x) { return new Date(x.created_at).getTime() < cutoff; }).map(function (x) { return x.id; });
-    if (stale.length) { /* Client-side workaround until a scheduled cleanup job is available. */ await client.from("rooms").update({ is_public: false }).in("id", stale).eq("status", "waiting"); rooms = rooms.filter(function (x) { return stale.indexOf(x.id) < 0; }); }
     o.publicLoading = false;
     if (!box || state.screen !== "onlinePublicRooms") return;
     if (!rooms.length) { box.innerHTML = '<p class="muted center-text">لا توجد غرف عامة مفتوحة الآن.</p>'; return; }
