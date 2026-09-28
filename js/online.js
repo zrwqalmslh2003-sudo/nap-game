@@ -662,4 +662,14 @@
   }
 
   window.Online = { render: function (screen) { if (screen === "onlineMenu") renderMenu(); else if (screen === "onlineCreate") renderCreate(); else if (screen === "onlineJoin") renderJoin(); else if (screen === "onlinePublicRooms") renderPublicRooms(); else if (screen === "onlineWaiting") renderWaiting(); else if (screen === "onlinePlaying") renderPlaying(); else if (screen === "onlineReview") renderReview(); else if (screen === "onlineResults") { loadPlayers().then(renderResults); } } };
+  window.addEventListener("load", async function () {
+    var saved = readOnlineSession();
+    if (!saved || !saved.roomCode || !saved.id) return;
+    try {
+      var r = await client.from("rooms").select("id").eq("code", saved.roomCode).in("status", ["waiting", "playing"]).maybeSingle();
+      if (r.error || !r.data) { clearOnlineSession(); return; }
+      state.mode = "online";
+      await resumeRoom();
+    } catch (e) { /* stay on home */ }
+  });
 })();
