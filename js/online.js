@@ -386,7 +386,7 @@
   }
 
   function renderCreate() {
-    o.settings.isPublic = false; o.settings.roomName = "";
+    o.settings.isPublic = false;
     screenEl.innerHTML = '<div class="card stack"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">إنشاء غرفة</h2><label class="field-label" for="ocName">اسمك</label><input type="text" id="ocName" maxlength="20" placeholder="اكتب الاسم"><span class="field-label">نوع الغرفة</span><div class="choice-row" id="ocVisibility"><div class="choice active" data-v="private">خاصة</div><div class="choice" data-v="public">عامة</div></div><div id="ocPublicFields" style="display:none;"><p class="muted">سيُسمّى تلقائيًا، مثل: الغرفة 575</p></div><span class="field-label">مدة الجولة</span><div class="choice-row" id="ocDuration"><div class="choice" data-v="30">30</div><div class="choice active" data-v="60">60</div><div class="choice" data-v="90">90</div></div><span class="field-label">عدد الجولات</span><div class="choice-row" id="ocRounds"><div class="choice active" data-v="3">3</div><div class="choice" data-v="5">5</div><div class="choice" data-v="10">10</div></div><button class="btn btn-primary" id="ocGo">إنشاء الغرفة</button><button class="btn btn-ghost" id="ocBack">رجوع</button></div>';
     document.getElementById("ocVisibility").onclick = function (e) { var n = e.target.closest(".choice"); if (!n) return; o.settings.isPublic = n.dataset.v === "public"; document.getElementById("ocPublicFields").style.display = o.settings.isPublic ? "block" : "none"; Array.prototype.forEach.call(this.children, function (x) { x.classList.toggle("active", x === n); }); };
     document.getElementById("ocDuration").onclick = function (e) { var n = e.target.closest(".choice"); if (!n) return; o.settings.roundDuration = Number(n.dataset.v); Array.prototype.forEach.call(this.children, function (x) { x.classList.toggle("active", x === n); }); };
@@ -407,7 +407,7 @@
     var p = await client.from("players").insert({ id: meId, room_id: roomId, name: name, total_score: 0, connected: true }).select().single();
     if (p.error) { o.creating = false; if (goButton) goButton.disabled = false; return fail(p.error.message); }
     o.room = r.data; o.me = p.data; saveOnlineSession();
-    client.rpc("cleanup_stale_rooms").then(function () {}).catch(function () {});
+    client.rpc("cleanup_stale_rooms").then(function () {}).catch(function (e) { console.warn("cleanup_stale_rooms failed", e); });
     setupRealtime(); route("onlineWaiting");
   }
   function renderJoin() {
