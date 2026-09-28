@@ -13,7 +13,7 @@ var LOCAL_ASSETS = [
   "./js/letters.js?v=20260929b",
   "./js/dictionary.js",
   "./js/validation.js",
-  "./js/scoring.js",
+  "./js/scoring.js?v=20260929b",
   "./js/game.js?v=20260929b",
   "./js/online.js?v=20260929b",
   "./js/app.js?v=20260929b",
