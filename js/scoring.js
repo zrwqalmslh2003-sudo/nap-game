@@ -3,7 +3,7 @@ const CATEGORIES = [
   { key: "nameFemale", label: "اسم بنت", dictCat: "name_female" },
   { key: "animal",  label: "حيوان" },
   { key: "plant",   label: "نبات" },
-  { key: "object",  label: "جماد" },
+  { key: "object",  label: "جماد", skipDict: true, minLen: 3 },
   { key: "country", label: "بلاد" }
 ];
 
@@ -21,7 +21,9 @@ function calculateRoundScores(letter, players, answersByPlayer) {
       let candidate = false;
       let status = "empty";
       if (!raw || !raw.trim()) { status = "empty"; }
+      else if (cat.minLen && raw.trim().length < cat.minLen) { status = "invalid"; }
       else if (!valid) { status = "invalid"; }
+      else if (cat.skipDict) { candidate = true; }
       else {
         const inDict = isWordInDictionary(letter, raw, cat.dictCat || cat.key);
         if (inDict === false) { status = "not_in_dict"; }
