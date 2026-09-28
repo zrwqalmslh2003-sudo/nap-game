@@ -453,8 +453,6 @@
       if (counts.error) { o.publicLoading = false; if (box) box.innerHTML = '<p class="muted center-text">تعذر تحميل اللاعبين.</p>'; return; }
       (counts.data || []).forEach(function (row) { countByRoom[row.room_id] = (countByRoom[row.room_id] || 0) + 1; });
     }
-    var cutoff = Date.now() - 2 * 60 * 60 * 1000, stale = rooms.filter(function (x) { return new Date(x.created_at).getTime() < cutoff; }).map(function (x) { return x.id; });
-    if (stale.length) { /* Client-side workaround until a scheduled cleanup job is available. */ await client.from("rooms").update({ is_public: false }).in("id", stale).eq("status", "waiting"); rooms = rooms.filter(function (x) { return stale.indexOf(x.id) < 0; }); }
     o.publicLoading = false;
     if (!box || state.screen !== "onlinePublicRooms") return;
     if (!rooms.length) { box.innerHTML = '<p class="muted center-text">لا توجد غرف عامة مفتوحة الآن.</p>'; return; }
@@ -467,9 +465,17 @@
   }
   function renderPublicRooms() {
     clearInterval(o.publicPollId);
-    screenEl.innerHTML = '<div class="card stack"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">غرف عامة</h2><label class="field-label" for="opName">اسمك</label><input type="text" id="opName" maxlength="20" placeholder="اكتب الاسم"><div id="opRooms"><p class="muted center-text">جارٍ تحميل الغرف…</p></div><button class="btn btn-secondary" id="opJoinCode">انضمام برمز</button><button class="btn btn-ghost" id="opBack">رجوع</button></div>';
+    screenEl.innerHTML = '<div class="card stack"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">غرف عامة</h2><label class="field-label" for="opName">اسمك</label><input type="text" id="opName" maxlength="20" placeholder="اكتب الاسم"><button type="button" class="btn btn-secondary btn-refresh" id="orRefresh"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41zm-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9z"></path><path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5.002 5.002 0 0 0 8 3zM3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9H3.1z"></path></svg>تحديث</button><div id="opRooms"><p class="muted center-text">جارٍ تحميل الغرف…</p></div><button class="btn btn-secondary" id="opJoinCode">انضمام برمز</button><button class="btn btn-ghost" id="opBack">رجوع</button></div>';
     document.getElementById("opJoinCode").onclick = function () { route("onlineJoin"); };
     document.getElementById("opBack").onclick = function () { route("onlineMenu"); };
+    document.getElementById("orRefresh").onclick = async function () {
+      this.setAttribute("aria-busy", "true");
+      this.disabled = true;
+      try { await loadPublicRooms(); } finally {
+        this.removeAttribute("aria-busy");
+        this.disabled = false;
+      }
+    };
     loadPublicRooms();
     o.publicPollId = setInterval(loadPublicRooms, 3000);
   }
@@ -541,7 +547,7 @@
 
   function renderPlaying() {
     var rem = nowRemaining();
-    screenEl.innerHTML = '<div class="card" id="onlineForm"><div class="play-top"><span class="letter-chip">' + esc(o.round.letter) + '</span><span class="timer' + (rem <= 10 ? ' urgent' : '') + '" id="oTimer">' + fmt(rem) + '</span></div><p class="center-text muted" style="margin:2px 0 14px;">الجولة ' + o.round.number + ' — اكتب إجاباتك ثم اضغط انتهيت</p>' + CATEGORIES.map(function (c) { return '<div class="answer-block"><label for="of_' + c.key + '">' + c.label + '</label><input type="text" id="of_' + c.key + '" placeholder="' + esc(o.round.letter) + '..."></div>'; }).join("") + '<button class="btn btn-primary" id="ofFinish">انتهيت ✓</button></div><div class="card" id="oStrip"></div>';
+    screenEl.innerHTML = '<div class="card" id="onlineForm"><div class="play-top"><span class="letter-chip">' + esc(o.round.letter) + '</span><span class="timer' + (rem <= 10 ? ' urgent' : '') + '" id="oTimer">' + fmt(rem) + '</span></div><p class="center-text muted" style="margin:2px 0 14px;">الجولة ' + o.round.number + ' — اكتب إجاباتك ثم اضغط انتهيت</p>' + CATEGORIES.map(function (c) { return '<div class="answer-block"><label for="of_' + c.key + '">' + c.label + '</label><input type="text" id="of_' + c.key + '" maxlength="40" placeholder="' + esc(o.round.letter) + '..."></div>'; }).join("") + '<button class="btn btn-primary" id="ofFinish">انتهيت ✓</button></div><div class="card" id="oStrip"></div>';
     CATEGORIES.forEach(function (c) { var el = document.getElementById("of_" + c.key); el.oninput = trackTyping; });
     document.getElementById("ofFinish").onclick = submitOnline; updatePlayersStrip(); startOnlineTimer();
   }

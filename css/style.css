@@ -63,6 +63,10 @@ h1.hero { font-family: 'Cairo', sans-serif; font-weight: 800; font-size: 34px; l
 .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
 .btn-row { display: flex; gap: 10px; }
 
+.btn-refresh svg { width: 1.1rem; height: 1.1rem; }
+.btn-refresh[aria-busy="true"] svg { animation: spin-refresh 0.8s linear infinite; }
+@keyframes spin-refresh { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
 .field-label { font-weight: 700; font-size: 14px; margin-bottom: 8px; display: block; color: var(--ink); }
 .stepper { display: flex; align-items: center; justify-content: center; gap: 18px; }
 .stepper button { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--accent); background: var(--surface); color: var(--accent-deep); font-size: 20px; font-weight: 800; cursor: pointer; }

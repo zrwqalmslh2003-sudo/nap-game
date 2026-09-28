@@ -1,4 +1,4 @@
-var CACHE_NAME = "nap-game-20260929b";
+var CACHE_NAME = "nap-game-20260930";
 var LOCAL_ASSETS = [
   "./",
   "./index.html",
@@ -6,17 +6,17 @@ var LOCAL_ASSETS = [
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/icon-512-maskable.png",
-  "./css/reset.css",
-  "./css/variables.css",
-  "./css/style.css",
-  "./js/normalization.js",
-  "./js/letters.js?v=20260929b",
-  "./js/dictionary.js",
-  "./js/validation.js",
-  "./js/scoring.js?v=20260929b",
-  "./js/game.js?v=20260929b",
-  "./js/online.js?v=20260929b",
-  "./js/app.js?v=20260929b",
+  "./css/reset.css?v=20260930",
+  "./css/variables.css?v=20260930",
+  "./css/style.css?v=20260930",
+  "./js/normalization.js?v=20260930",
+  "./js/letters.js?v=20260930",
+  "./js/dictionary.js?v=20260930",
+  "./js/validation.js?v=20260930",
+  "./js/scoring.js?v=20260930",
+  "./js/game.js?v=20260930",
+  "./js/online.js?v=20260930",
+  "./js/app.js?v=20260930",
 ];
 
 self.addEventListener("install", function (event) {
