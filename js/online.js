@@ -63,7 +63,6 @@
     try {
       var payload = { id: o.me.id, name: o.me.name, roomCode: o.room.code, savedAt: Date.now() };
       localStorage.setItem("nap.online.me", JSON.stringify(payload));
-      sessionStorage.setItem("nap.online.me", JSON.stringify(payload));
     } catch (e) {}
   }
   function clearOnlineSession() {
@@ -661,15 +660,18 @@
     document.getElementById("orHome").onclick = function () { clearOnlineSession(); cleanup(); state.mode = "local"; window.goTo("home"); };
   }
 
-  window.Online = { render: function (screen) { if (screen === "onlineMenu") renderMenu(); else if (screen === "onlineCreate") renderCreate(); else if (screen === "onlineJoin") renderJoin(); else if (screen === "onlinePublicRooms") renderPublicRooms(); else if (screen === "onlineWaiting") renderWaiting(); else if (screen === "onlinePlaying") renderPlaying(); else if (screen === "onlineReview") renderReview(); else if (screen === "onlineResults") { loadPlayers().then(renderResults); } } };
+  window.Online = { hasSession: function () { var s = readOnlineSession(); return !!(s && s.roomCode && s.id); }, render: function (screen) { if (screen === "onlineMenu") renderMenu(); else if (screen === "onlineCreate") renderCreate(); else if (screen === "onlineJoin") renderJoin(); else if (screen === "onlinePublicRooms") renderPublicRooms(); else if (screen === "onlineWaiting") renderWaiting(); else if (screen === "onlinePlaying") renderPlaying(); else if (screen === "onlineReview") renderReview(); else if (screen === "onlineResults") { loadPlayers().then(renderResults); } } };
   window.addEventListener("load", async function () {
+    // app.js shows a "restoring" placeholder (screen "onlineResume") when the URL hash points at an online screen.
+    function pendingFallback() { if (state.screen === "onlineResume") { state.mode = "local"; window.goTo("home"); } }
     var saved = readOnlineSession();
-    if (!saved || !saved.roomCode || !saved.id) return;
+    if (!saved || !saved.roomCode || !saved.id) { pendingFallback(); return; }
     try {
       var r = await client.from("rooms").select("id").eq("code", saved.roomCode).in("status", ["waiting", "playing"]).maybeSingle();
-      if (r.error || !r.data) { clearOnlineSession(); return; }
+      if (r.error || !r.data) { clearOnlineSession(); pendingFallback(); return; }
       state.mode = "online";
       await resumeRoom();
     } catch (e) { /* stay on home */ }
+    pendingFallback();
   });
 })();

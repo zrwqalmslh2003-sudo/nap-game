@@ -1,4 +1,4 @@
-var CACHE_NAME = "nap-game-20260930d";
+var CACHE_NAME = "nap-game-20260930f";
 var LOCAL_ASSETS = [
   "./",
   "./index.html",
@@ -6,23 +6,27 @@ var LOCAL_ASSETS = [
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/icon-512-maskable.png",
-  "./css/reset.css?v=20260930d",
-  "./css/variables.css?v=20260930d",
-  "./css/style.css?v=20260930d",
-  "./js/normalization.js?v=20260930d",
-  "./js/letters.js?v=20260930d",
-  "./js/dictionary.js?v=20260930d",
-  "./js/validation.js?v=20260930d",
-  "./js/scoring.js?v=20260930d",
-  "./js/game.js?v=20260930d",
-  "./js/online.js?v=20260930d",
-  "./js/app.js?v=20260930d",
+  "./css/reset.css?v=20260930f",
+  "./css/variables.css?v=20260930f",
+  "./css/style.css?v=20260930f",
+  "./js/normalization.js?v=20260930f",
+  "./js/letters.js?v=20260930f",
+  "./js/dictionary.js?v=20260930f",
+  "./js/validation.js?v=20260930f",
+  "./js/scoring.js?v=20260930f",
+  "./js/game.js?v=20260930f",
+  "./js/online.js?v=20260930f",
+  "./js/app.js?v=20260930f",
 ];
 
 self.addEventListener("install", function (event) {
   event.waitUntil(
     caches.open(CACHE_NAME).then(function (cache) {
-      return cache.addAll(LOCAL_ASSETS);
+      return Promise.all(LOCAL_ASSETS.map(function (url) {
+        return cache.add(url).catch(function (e) {
+          console.warn("precache skipped:", url, e);
+        });
+      }));
     }).then(function () {
       return self.skipWaiting();
     })
@@ -39,24 +43,34 @@ self.addEventListener("activate", function (event) {
   );
 });
 
+self.addEventListener("message", function (event) {
+  if (event.data === "SKIP_WAITING") self.skipWaiting();
+});
+
+// Network-first: always try the server for the freshest files, and fall back to
+// the cache only when offline. (Cache-first made the refresh button reload stale files.)
 self.addEventListener("fetch", function (event) {
   if (event.request.method !== "GET") return;
 
   var requestUrl = new URL(event.request.url);
   if (requestUrl.origin !== self.location.origin) return;
 
+  var isNav = event.request.mode === "navigate";
+  var networkRequest = isNav
+    ? new Request(event.request.url, { cache: "no-cache", credentials: "same-origin" })
+    : new Request(event.request, { cache: "no-cache" });
+
   event.respondWith(
-    caches.match(event.request).then(function (cached) {
-      if (cached) return cached;
-      return fetch(event.request).then(function (response) {
-        if (!response || response.status !== 200 || response.type !== "basic") return response;
+    fetch(networkRequest).then(function (response) {
+      if (response && response.status === 200 && response.type === "basic") {
         var copy = response.clone();
-        caches.open(CACHE_NAME).then(function (cache) { cache.put(event.request, copy); });
-        return response;
-      });
+        caches.open(CACHE_NAME).then(function (cache) { cache.put(isNav ? "./index.html" : event.request, copy); });
+      }
+      return response;
     }).catch(function () {
-      if (event.request.mode === "navigate") return caches.match("./index.html");
-      return Response.error();
+      return caches.match(isNav ? "./index.html" : event.request).then(function (cached) {
+        return cached || (isNav ? caches.match("./") : null) || Response.error();
+      });
     })
   );
 });
