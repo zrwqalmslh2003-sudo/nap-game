@@ -1,4 +1,4 @@
-var CACHE_NAME = "nap-game-20260929b";
+var CACHE_NAME = "nap-game-20260929c";
 var LOCAL_ASSETS = [
   "./",
   "./index.html",
@@ -6,9 +6,9 @@ var LOCAL_ASSETS = [
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/icon-512-maskable.png",
-  "./css/reset.css",
-  "./css/variables.css",
-  "./css/style.css",
+  "./css/reset.css?v=20260929c",
+  "./css/variables.css?v=20260929c",
+  "./css/style.css?v=20260929c",
   "./js/normalization.js",
   "./js/letters.js?v=20260929b",
   "./js/dictionary.js",
