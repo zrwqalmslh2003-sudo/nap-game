@@ -225,6 +225,19 @@
       return;
     }
     o.round = r.data; o.answers = {}; o.submitted = {}; o.scores = {}; o.closing = false; o.submitting = false;
+    pruneOldDrafts();
+    var draft = loadDraft();
+    if (draft) { o.answers[o.me.id] = draft; }
+    if (o.round.status === "active") {
+      // Already submitted this round (e.g. refreshed after pressing "انتهيت")? The server copy wins, and the form stays locked.
+      var mine = await client.from("answers").select("category,value").eq("round_id", o.round.id).eq("player_id", o.me.id);
+      if (!mine.error && mine.data && mine.data.length) {
+        o.answers[o.me.id] = {};
+        mine.data.forEach(function (row) { o.answers[o.me.id][row.category] = row.value; });
+        o.submitted[o.me.id] = true;
+        clearDraft();
+      }
+    }
     var dict = await loadDictionaryWithRetry(o.round.letter);
     if (!dict) return fail("تعذر تحميل قاموس هذا الحرف؛ لم تبدأ الجولة لتجنب قبول إجابات غير متحقق منها");
     if (o.round.status === "active") { if (window.beep) window.beep.reset(); route("onlinePlaying"); startOnlineTimer(); }
@@ -234,6 +247,49 @@
       setTimeout(loadCurrentRound, 1000);
     }
   }
+  /* ---------- local draft of in-progress answers (never sent to Supabase) ---------- */
+  var DRAFT_PREFIX = "nap.online.draft.";
+  var DRAFT_MAX_AGE_MS = 4 * 60 * 60 * 1000;
+  function draftKey() { return o.round ? DRAFT_PREFIX + o.round.id : null; }
+  function saveDraft() {
+    if (!o.round || !o.me) return;
+    try {
+      localStorage.setItem(draftKey(), JSON.stringify({
+        playerId: o.me.id,
+        answers: o.answers[o.me.id] || {},
+        savedAt: Date.now()
+      }));
+    } catch (e) { /* storage full or blocked: the round still works, the draft just won't survive */ }
+  }
+  function loadDraft() {
+    if (!o.round || !o.me) return null;
+    try {
+      var raw = localStorage.getItem(draftKey());
+      if (!raw) return null;
+      var d = JSON.parse(raw);
+      if (!d || d.playerId !== o.me.id) return null;
+      if (!d.savedAt || Date.now() - d.savedAt > DRAFT_MAX_AGE_MS) {
+        localStorage.removeItem(draftKey());
+        return null;
+      }
+      return d.answers || null;
+    } catch (e) { return null; }
+  }
+  function clearDraft() {
+    if (!o.round) return;
+    try { localStorage.removeItem(draftKey()); } catch (e) { /* ignore */ }
+  }
+  // Housekeeping: drafts of other (finished) rounds are useless; drop them so storage does not pile up.
+  function pruneOldDrafts() {
+    try {
+      var keep = draftKey();
+      for (var i = localStorage.length - 1; i >= 0; i--) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf(DRAFT_PREFIX) === 0 && k !== keep) localStorage.removeItem(k);
+      }
+    } catch (e) { /* ignore */ }
+  }
+
   async function loadRoundScores() {
     if (!o.round) return;
     var dict = await loadDictionaryWithRetry(o.round.letter);
@@ -343,11 +399,16 @@
     var r = await client.from("answers").insert(rows);
     if (r.error) { o.submitting = false; if (finishButton) finishButton.disabled = false; return fail(r.error.message); }
     o.submitted[o.me.id] = true; lockOnlineForm(); updatePlayersStrip();
+    clearDraft();
     var ch = o.channels[0]; if (ch) ch.track({ player_id: o.me.id, typing: false, submitted: true });
     clearTimeout(o.submitDebounce);
     o.submitDebounce = setTimeout(function () { if (allSubmitted()) closeRound(); }, 300);
   }
-  function trackTyping() {
+  function trackTyping(key) {
+    if (!o.answers[o.me.id]) o.answers[o.me.id] = {};
+    var el = document.getElementById("of_" + key);
+    if (el) o.answers[o.me.id][key] = el.value;
+    saveDraft();
     if (o.typingThrottle) return;
     var ch = o.channels[0]; if (ch) ch.track({ player_id: o.me.id, typing: true, submitted: false });
     o.typingThrottle = setTimeout(function () { o.typingThrottle = null; }, 1500);
@@ -570,9 +631,10 @@
 
   function renderPlaying() {
     var rem = nowRemaining();
-    screenEl.innerHTML = '<div class="card" id="onlineForm"><div class="play-top"><span class="letter-chip">' + esc(o.round.letter) + '</span><span class="timer' + (rem <= 10 ? ' urgent' : '') + '" id="oTimer">' + fmt(rem) + '</span></div><p class="center-text muted" style="margin:2px 0 14px;">الجولة ' + o.round.number + ' — اكتب إجاباتك ثم اضغط انتهيت</p>' + CATEGORIES.map(function (c) { return '<div class="answer-block"><label for="of_' + c.key + '">' + c.label + '</label><input type="text" id="of_' + c.key + '" maxlength="40" placeholder="' + esc(o.round.letter) + '..."></div>'; }).join("") + '<button class="btn btn-primary" id="ofFinish">انتهيت ✓</button></div><div class="card" id="oStrip"></div>';
-    CATEGORIES.forEach(function (c) { var el = document.getElementById("of_" + c.key); el.oninput = trackTyping; });
+    screenEl.innerHTML = '<div class="card" id="onlineForm"><div class="play-top"><span class="letter-chip">' + esc(o.round.letter) + '</span><span class="timer' + (rem <= 10 ? ' urgent' : '') + '" id="oTimer">' + fmt(rem) + '</span></div><p class="center-text muted" style="margin:2px 0 14px;">الجولة ' + o.round.number + ' — اكتب إجاباتك ثم اضغط انتهيت</p>' + CATEGORIES.map(function (c) { return '<div class="answer-block"><label for="of_' + c.key + '">' + c.label + '</label><input type="text" id="of_' + c.key + '" maxlength="40" value="' + esc((o.answers[o.me.id] && o.answers[o.me.id][c.key]) || "") + '" placeholder="' + esc(o.round.letter) + '..."></div>'; }).join("") + '<button class="btn btn-primary" id="ofFinish">انتهيت ✓</button></div><div class="card" id="oStrip"></div>';
+    CATEGORIES.forEach(function (c) { var el = document.getElementById("of_" + c.key); el.oninput = function () { trackTyping(c.key); }; });
     document.getElementById("ofFinish").onclick = submitOnline; updatePlayersStrip(); startOnlineTimer();
+    if (o.submitted[o.me.id]) lockOnlineForm();
   }
   function categoryLabel(key) {
     var c = CATEGORIES.filter(function (x) { return x.key === key; })[0];
