@@ -227,7 +227,7 @@
     o.round = r.data; o.answers = {}; o.submitted = {}; o.scores = {}; o.closing = false; o.submitting = false;
     var dict = await loadDictionaryWithRetry(o.round.letter);
     if (!dict) return fail("تعذر تحميل قاموس هذا الحرف؛ لم تبدأ الجولة لتجنب قبول إجابات غير متحقق منها");
-    if (o.round.status === "active") { route("onlinePlaying"); startOnlineTimer(); }
+    if (o.round.status === "active") { if (window.beep) window.beep.reset(); route("onlinePlaying"); startOnlineTimer(); }
     else if (o.round.status === "locked") {
       o.lockedAt = serverNow();
       await loadRoundScores(); route("onlineReview");
@@ -261,6 +261,7 @@
     clearInterval(o.timerId);
     o.timerId = setInterval(function () {
       var remaining = nowRemaining(), el = document.getElementById("oTimer");
+      if (window.beep) window.beep.tick(remaining);
       if (el) { el.textContent = fmt(remaining); el.classList.toggle("urgent", remaining <= 10); }
       if (remaining <= 0) { clearInterval(o.timerId); closeRound(); }
     }, 200);
