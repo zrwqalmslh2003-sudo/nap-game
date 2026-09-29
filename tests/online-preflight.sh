@@ -25,6 +25,8 @@ grep -q 'oNextRound' js/online.js
 grep -q '60000' js/online.js
 grep -q 'loadDictionaryWithRetry' js/online.js
 grep -q 'لا يمكن حساب نتائج الجولة بأمان' js/online.js
+grep -q 'var MAX_ONLINE_PLAYERS = 20;' js/online.js
+grep -q '20 لاعبًا كحد أقصى' js/online.js
 
 echo "online-preflight: PASS"
 echo "- JavaScript syntax: PASS"
