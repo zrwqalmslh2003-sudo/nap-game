@@ -12,7 +12,7 @@
     submitted: {}, presence: {}, scores: {}, roundHistory: [],
     objections: {}, accepting: {}, seenObjectionIds: {}, objectionQueue: [],
     channels: [], timerId: null, nextRoundTimer: null, clockId: null, pollId: null, publicPollId: null, submitDebounce: null, typingThrottle: null,
-    closing: false, starting: false, submitting: false, joining: false, creating: false, selfKicked: false, lockedAt: 0, kicking: {}, reporting: {}, publicLoading: false,
+    closing: false, starting: false, submitting: false, joining: false, creating: false, selfKicked: false, lockedAt: 0, kicking: {}, reporting: {}, publicLoading: false, lastCleanupAt: 0,
     settings: { totalRounds: 3, roundDuration: 60, isPublic: false }
   };
 
@@ -151,9 +151,20 @@
     clearInterval(o.pollId);
     o.pollId = setInterval(async function () {
       if (!o.room || o.room.status === "done") return;
+      if (serverNow() - o.lastCleanupAt > 30000) {
+        o.lastCleanupAt = serverNow();
+        client.rpc("cleanup_stale_rooms").then(function () {}).catch(function (e) { console.warn("cleanup failed", e); });
+      }
       try {
         var rr = await client.from("rooms").select("current_round,status").eq("id", o.room.id).maybeSingle();
-        if (rr.error || !rr.data) return;
+        if (rr.error) return;
+        if (!rr.data) {
+          clearOnlineSession();
+          cleanup();
+          route("onlineMenu");
+          alert("أُغلقت الغرفة — لم تبدأ اللعبة خلال 10 دقائق");
+          return;
+        }
         var meState = await client.from("players").select("kicked_at").eq("id", o.me.id).eq("room_id", o.room.id).maybeSingle();
         if (!meState.error && meState.data && meState.data.kicked_at) { handleSelfKicked(); return; }
         if (o.round && o.round.status === "active") {
@@ -509,6 +520,10 @@
   }
   async function loadPublicRooms() {
     if (o.publicLoading || state.screen !== "onlinePublicRooms") return;
+    if (serverNow() - o.lastCleanupAt > 30000) {
+      o.lastCleanupAt = serverNow();
+      client.rpc("cleanup_stale_rooms").then(function () {}).catch(function (e) { console.warn("cleanup failed", e); });
+    }
     o.publicLoading = true;
     var box = document.getElementById("opRooms");
     var r = await client.from("rooms").select("id,room_name,created_at,status").eq("is_public", true).eq("status", "waiting").order("created_at", { ascending: false }).limit(30);
@@ -746,6 +761,11 @@
     };
   }
   function renderResults() {
+    if (o.room && Number(o.room.current_round) === 0) {
+      screenEl.innerHTML = '<div class="card center-text"><div class="tie-banner">أُغلقت الغرفة — لم تبدأ اللعبة خلال 10 دقائق</div><p class="muted">يمكنك إنشاء غرفة جديدة أو الانضمام إلى أخرى.</p><button class="btn btn-primary" id="orHome">الرئيسية</button></div>';
+      document.getElementById("orHome").onclick = function () { clearOnlineSession(); cleanup(); state.mode = "local"; window.goTo("home"); };
+      return;
+    }
     var ranked = activePlayers().slice().sort(function (a, b) { return (b.total_score || 0) - (a.total_score || 0); });
     screenEl.innerHTML = '<div class="card"><div class="final-title"><span class="trophy">🏆</span><h2 style="font-family:Cairo,sans-serif;font-weight:800;">النتائج النهائية</h2></div>' + ranked.map(function (p, i) { return '<div class="leaderboard-row"><span class="rank-medal">' + (["🥇", "🥈", "🥉"][i] || (i + 1)) + '</span><span class="lb-name">' + esc(p.name) + '</span><span class="lb-score">' + (p.total_score || 0) + '</span></div>'; }).join("") + '<button class="btn btn-primary" id="orHome" style="margin-top:18px;">الرئيسية</button></div>';
     document.getElementById("orHome").onclick = function () { clearOnlineSession(); cleanup(); state.mode = "local"; window.goTo("home"); };
