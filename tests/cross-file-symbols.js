@@ -23,6 +23,7 @@ var FILES = [
   "js/dictionary.js",
   "js/validation.js",
   "js/scoring.js",
+  "js/ai.js",
   "js/game.js",
   "js/online.js",
   "js/app.js"
