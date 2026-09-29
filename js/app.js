@@ -50,6 +50,33 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveSession, 250);
   }
+  // Invite links: <page>#/join/ABCDE  -> join screen with the room code pre-filled.
+  function inviteCodeFromHash() {
+    const m = /^#\/join\/([A-Za-z0-9]{5})\/?$/.exec(window.location.hash || "");
+    return m ? m[1].toUpperCase() : null;
+  }
+  function showResumePlaceholder() {
+    state.mode = "online";
+    state.screen = "onlineResume";
+    screenEl.innerHTML = '<div class="card center-text"><p class="muted">جارٍ استعادة الغرفة…</p></div>';
+  }
+  function openInvite(code, fromInit) {
+    if (!window.Online) return false;
+    if (window.Online.hasSession && window.Online.hasSession()) {
+      if (!confirm("لديك غرفة أونلاين سابقة. هل تريد تركها والانضمام إلى الغرفة الجديدة؟")) {
+        if (fromInit) {
+          showResumePlaceholder();
+          return true;
+        }
+        return false;
+      }
+      window.Online.clearSession();
+    }
+    window.Online.prefillCode = code;
+    state.mode = "online";
+    goTo("onlineJoin");
+    return true;
+  }
   // Can this local screen be shown with the data currently in state?
   function screenReady(screen) {
     switch (screen) {
@@ -590,6 +617,14 @@
 
   // Manual hash edits / external navigation. Timed screens and online games are never left this way.
   window.addEventListener("hashchange", function () {
+    const invite = inviteCodeFromHash();
+    if (invite) {
+      const canOpen = TIMED_SCREENS.indexOf(state.screen) === -1 &&
+        (state.mode !== "online" || ONLINE_MENU_SCREENS.indexOf(state.screen) !== -1);
+      if (canOpen && openInvite(invite, false)) return;
+      writeHash(state.screen);
+      return;
+    }
     const target = screenFromHash();
     if (!target || target === state.screen) return;
     const allowed = state.mode !== "online" &&
@@ -602,6 +637,8 @@
 
   async function init() {
     if (pageRefreshButton) pageRefreshButton.onclick = refreshPage;
+    const invite = inviteCodeFromHash();
+    if (invite && openInvite(invite, true)) return;
     const target = screenFromHash();
 
     if (target && target.indexOf("online") === 0) {
@@ -609,8 +646,7 @@
       if (ONLINE_MENU_SCREENS.indexOf(target) !== -1) return goTo(target);
       if (window.Online && window.Online.hasSession && window.Online.hasSession()) {
         // online.js resumes the room on window load and routes to the right screen.
-        state.screen = "onlineResume";
-        screenEl.innerHTML = '<div class="card center-text"><p class="muted">جارٍ استعادة الغرفة…</p></div>';
+        showResumePlaceholder();
         return;
       }
       state.mode = "local";
