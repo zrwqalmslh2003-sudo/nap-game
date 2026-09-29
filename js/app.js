@@ -15,7 +15,7 @@
   const TIMED_SCREENS = ["roundReady", "playing"];
   const ONLINE_MENU_SCREENS = ["onlineMenu", "onlineCreate", "onlineJoin", "onlinePublicRooms"];
   const SNAPSHOT_KEYS = ["settings", "playerNames", "players", "round",
-    "answers", "roundScores", "roundHistory", "tieBreaker", "dictionaryMissing"];
+    "answers", "roundScores", "roundHistory", "tieBreaker", "dictionaryMissing", "userNameError"];
   let saveTimer = null;
 
   function screenFromHash() {
@@ -261,7 +261,7 @@
             CATEGORIES.map(function (c) { return '<span class="cat-chip">' + c.label + '</span>'; }).join("") +
           '</div>' +
         '</div>' +
-        '<button class="btn btn-primary" id="btnToPlayers">متابعة</button>' +
+        '<button class="btn btn-primary" id="btnStartGame">متابعة</button>' +
         '<button class="btn btn-ghost" id="btnBackHome" style="align-self:center;">رجوع</button>' +
       '</div>';
 
@@ -286,7 +286,7 @@
       s.totalRounds = parseInt(t.dataset.val, 10);
       renderSetup();
     };
-    document.getElementById("btnToPlayers").onclick = function () {
+    document.getElementById("btnStartGame").onclick = function () {
       if (!validateUserName()) { renderSetup(); return; }
       s.userName = s.userName.trim();
       savePrefs({ settings: state.settings, playerNames: [] });
@@ -332,14 +332,14 @@
     const total = state.turn.duration || 1;
     const progress = Math.max(0, Math.min(1, 1 - turnSecondsRemaining() / total));
     let dirty = false;
-    state.players.forEach(function (p) {
+    activeRoundPlayers().forEach(function (p) {
       if (!p.isBot || p.botSubmitted) return;
       if (progress >= p.botSubmitAt) { p.botSubmitted = true; dirty = true; }
     });
     return dirty;
   }
   function botStripHtml() {
-    return state.players.filter(function (p) { return p.isBot; }).map(function (p) {
+    return activeRoundPlayers().filter(function (p) { return p.isBot; }).map(function (p) {
       return '<div class="leaderboard-row" style="padding:6px 4px;">' +
         '<span class="lb-name">' + esc(p.name) + '</span>' +
         '<span class="muted">' + (p.botSubmitted ? 'أرسل ✓' : 'يكتب…') + '</span>' +
