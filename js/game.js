@@ -17,12 +17,10 @@ function savePrefs(prefs) {
 const state = {
   screen: "home",
   mode: "local",
-  settings: { playersCount: 2, roundDuration: 60, totalRounds: 5 },
-  playerNames: ["", ""],
-  players: [],            // [{id, name, totalScore}]
+  settings: { roundDuration: 60, totalRounds: 5, userName: "", botCount: 3 },
+  playerNames: [],         // legacy key, kept as an empty array so saved prefs keep their shape
+  players: [],            // [{id, name, totalScore, isHuman?, isBot?, botSubmitAt?, botSubmitted?}]
   round: { number: 0, letter: null, lastLetter: null },
-  turnOrder: [],           // player ids taking part in the current round, in turn order
-  currentPlayerIndex: 0,
   answers: {},             // playerId -> {name, animal, plant, object, country}
   roundScores: {},          // playerId -> per-category score result (current round)
   roundHistory: [],         // [{number, letter, scores, players}]
@@ -33,29 +31,40 @@ const state = {
   turn: { endAt: null, duration: 0, intervalId: null, locked: false },
   tieBreaker: { active: false, candidateIds: [] },
   dictionaryMissing: false,
-  nameErrors: []
+  userNameError: ""
 };
 
 /* ---------------- game lifecycle ---------------- */
+
+function randomBotSubmitAt() { return 0.35 + Math.random() * 0.45; }   // fraction of the round, [0.35, 0.8]
+
+// One human followed by `botCount` bots with distinct Arabic names.
+function buildPlayers() {
+  const userName = (state.settings.userName || "").trim();
+  const botCount = state.settings.botCount;
+  const botNames = window.ai.names(botCount, [userName]);
+  const players = [{ id: 1, name: userName || "أنت", totalScore: 0, isHuman: true }];
+  botNames.forEach(function (name, i) {
+    players.push({ id: i + 2, name: name, totalScore: 0, isBot: true, botSubmitAt: randomBotSubmitAt(), botSubmitted: false });
+  });
+  return players;
+}
+
+function humanPlayer() {
+  return state.players.filter(function (p) { return p.isHuman; })[0] || null;
+}
 
 async function startGame() {
   if (typeof loadAvailableLetters === "function") {
     try { await loadAvailableLetters(); } catch (e) { console.warn("letters manifest failed, using current pools"); }
   }
-  state.players = state.playerNames.slice(0, state.settings.playersCount).map(function (name, i) {
-    return { id: i + 1, name: name.trim(), totalScore: 0 };
-  });
-  state.round = { number: 0, letter: null, lastLetter: null };
-  state.roundHistory = [];
-  state.tieBreaker = { active: false, candidateIds: [] };
+  resetForNewGame();
   startRound();
 }
 
 // Rebuilds players/state without starting a round yet (used by "play again" before startRound()).
 function resetForNewGame() {
-  state.players = state.playerNames.slice(0, state.settings.playersCount).map(function (name, i) {
-    return { id: i + 1, name: name.trim(), totalScore: 0 };
-  });
+  state.players = buildPlayers();
   state.round = { number: 0, letter: null, lastLetter: null };
   state.roundHistory = [];
   state.tieBreaker = { active: false, candidateIds: [] };
@@ -87,26 +96,31 @@ async function startRound() {
   state.round.lastLetter = letter;
 
   const players = activeRoundPlayers();
-  state.turnOrder = players.map(function (p) { return p.id; });
-  state.currentPlayerIndex = 0;
-
   state.answers = {};
-  players.forEach(function (p) { state.answers[p.id] = { nameMale: "", nameFemale: "", animal: "", plant: "", object: "", country: "" }; });
+  players.forEach(function (p) { state.answers[p.id] = emptyAnswers(); });
 
   const dict = await loadDictionary(letter);
   state.dictionaryMissing = (dict === null);
 
+  players.forEach(function (p) {
+    if (!p.isBot) return;
+    state.answers[p.id] = window.ai.answers(letter, dict, CATEGORIES);
+    p.botSubmitted = false;
+    p.botSubmitAt = randomBotSubmitAt();
+  });
+
   startTurnCountdown();
 }
 
-/* ---------------- per-player turn ---------------- */
-
-function currentTurnPlayer() {
-  const id = state.turnOrder[state.currentPlayerIndex];
-  return state.players.filter(function (p) { return p.id === id; })[0] || null;
+function emptyAnswers() {
+  const a = {};
+  CATEGORIES.forEach(function (c) { a[c.key] = ""; });
+  return a;
 }
 
-// The ~3s "get ready" phase shown before every single player's turn (not just the first).
+/* ---------------- the human's turn (bots answer in the background) ---------------- */
+
+// The ~3s "get ready" phase shown before every round.
 // No inputs exist on this screen, and no game time is consumed while it runs.
 function startTurnCountdown() {
   clearInterval(state.countdown.intervalId);
@@ -129,7 +143,7 @@ function startTurnCountdown() {
   }, 100);
 }
 
-// Grants the CURRENT player the full configured duration, independent of any previous player.
+// Grants the human the full configured duration.
 function startPlayerTurn() {
   clearInterval(state.turn.intervalId);
   state.turn.locked = false;
@@ -170,19 +184,12 @@ function turnSecondsRemaining() {
   return Math.max(0, Math.ceil((state.turn.endAt - Date.now()) / 1000));
 }
 
-// isTimeout=true when the clock hit zero; false when the player pressed "I'm done" and confirmed.
+// Only the human calls this. isTimeout=true when the clock hit zero; false when they pressed "done" and confirmed.
 function finishPlayerTurn(isTimeout) {
   if (state.turn.locked) return;
   state.turn.locked = true;
   clearInterval(state.turn.intervalId);
-
-  const isLastPlayer = state.currentPlayerIndex >= state.turnOrder.length - 1;
-  if (isLastPlayer) {
-    finishRound();
-  } else {
-    state.currentPlayerIndex += 1;
-    startTurnCountdown();
-  }
+  finishRound();
 }
 
 /* ---------------- round + game completion ---------------- */
@@ -229,11 +236,10 @@ function getTiedLeaders() {
   return ranked.filter(function (p) { return p.totalScore === top; });
 }
 
+// The tie-break is over once the human is no longer among the tied leaders.
 function tieBreakerResolved() {
-  const scored = state.tieBreaker.candidateIds.map(function (id) {
-    return roundTotalForPlayer(state.roundScores[id]);
-  });
-  return new Set(scored).size === scored.length;
+  const tied = getTiedLeaders();
+  return tied.length < 2 || !tied.some(function (p) { return p.isHuman; });
 }
 
 function startTieBreaker() {
@@ -244,25 +250,10 @@ function startTieBreaker() {
 
 /* ---------------- setup helpers ---------------- */
 
-function syncPlayerNamesLength() {
-  const n = state.settings.playersCount;
-  while (state.playerNames.length < n) state.playerNames.push("");
-  state.playerNames = state.playerNames.slice(0, n);
-}
-
-function validatePlayerNames() {
-  const errors = state.playerNames.map(function () { return ""; });
-  const seen = {};
-  let ok = true;
-  state.playerNames.forEach(function (name, i) {
-    const trimmed = (name || "").trim();
-    if (trimmed.length < 2) { errors[i] = "حرفان على الأقل"; ok = false; return; }
-    if (trimmed.length > 20) { errors[i] = "20 حرفًا كحد أقصى"; ok = false; return; }
-    const key = normalizeAnswer(trimmed);
-    if (seen[key]) { errors[i] = "الاسم مكرر"; ok = false; return; }
-    seen[key] = true;
-  });
-  state.nameErrors = errors;
+function validateUserName() {
+  const len = (state.settings.userName || "").trim().length;
+  const ok = len >= 2 && len <= 20;
+  state.userNameError = ok ? "" : "من 2 إلى 20 حرفًا";
   return ok;
 }
 

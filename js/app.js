@@ -11,10 +11,10 @@
   /* ---------- hash routing + local-game persistence ---------- */
   const SESSION_KEY = "nap_game_session_v1";
   const SESSION_MAX_AGE_MS = 6 * 60 * 60 * 1000;
-  const LOCAL_SCREENS = ["home", "setup", "players", "roundReady", "playing", "review", "roundResults", "finalResults"];
+  const LOCAL_SCREENS = ["home", "setup", "roundReady", "playing", "review", "roundResults", "finalResults"];
   const TIMED_SCREENS = ["roundReady", "playing"];
   const ONLINE_MENU_SCREENS = ["onlineMenu", "onlineCreate", "onlineJoin", "onlinePublicRooms"];
-  const SNAPSHOT_KEYS = ["settings", "playerNames", "players", "round", "turnOrder", "currentPlayerIndex",
+  const SNAPSHOT_KEYS = ["settings", "playerNames", "players", "round",
     "answers", "roundScores", "roundHistory", "tieBreaker", "dictionaryMissing"];
   let saveTimer = null;
 
@@ -81,12 +81,11 @@
   function screenReady(screen) {
     switch (screen) {
       case "home": case "setup": return true;
-      case "players": return state.playerNames.some(function (n) { return (n || "").trim().length > 0; });
       case "roundReady": case "playing":
-        return state.turnOrder.length > 0 && !!state.round.letter && state.players.length > 0;
+        return !!humanPlayer() && !!state.round.letter && !!state.answers && !!state.answers[humanPlayer().id];
       case "review": case "roundResults":
-        return state.turnOrder.length > 0 && Object.keys(state.roundScores || {}).length > 0;
-      case "finalResults": return state.players.length > 0;
+        return !!humanPlayer() && Object.keys(state.roundScores || {}).length > 0;
+      case "finalResults": return !!humanPlayer();
       default: return false;
     }
   }
@@ -152,7 +151,6 @@
     switch (state.screen) {
       case "home": return renderHome();
       case "setup": return renderSetup();
-      case "players": return renderPlayers();
       case "roundReady": return renderRoundReady();
       case "playing": return renderPlaying();
       case "review": return renderReview();
@@ -178,18 +176,17 @@
     screenEl.innerHTML =
       '<div class="card stack center-text">' +
         '<h1 class="hero">اسم حيوان نبات<br>جماد بلاد</h1>' +
-        '<p class="subtitle">اختبروا سرعتكم ومعرفتكم بالحروف، لعبة تناوب محلية لغاية 6 لاعبين</p>' +
+        '<p class="subtitle">اختبروا سرعتكم ومعرفتكم بالحروف، العب ضد لاعبين آليين، أو أونلاين مع أصدقائك</p>' +
         '<button class="btn btn-primary" id="btnStart">ابدأ اللعبة</button>' +
         '<button class="btn btn-secondary" id="btnOnline">لعب أونلاين</button>' +
         '<button class="btn btn-ghost" id="btnRules" style="align-self:center;">طريقة اللعب</button>' +
       '</div>';
     document.getElementById("btnStart").onclick = function () {
       const prefs = loadPrefs();
-      if (prefs) {
-        state.settings = prefs.settings || state.settings;
-        state.playerNames = prefs.playerNames || state.playerNames;
+      if (prefs && prefs.settings) {
+        state.settings = Object.assign({}, state.settings, prefs.settings);
+        state.settings.botCount = Math.min(5, Math.max(1, parseInt(state.settings.botCount, 10) || 3));
       }
-      syncPlayerNamesLength();
       goTo("setup");
     };
     document.getElementById("btnOnline").onclick = function () { state.mode = "online"; goTo("onlineMenu"); };
@@ -203,7 +200,7 @@
           '<h3>طريقة اللعب</h3>' +
           '<p>' +
             '<strong>اللعب المحلي</strong><br>' +
-            'يظهر حرف متاح عشوائيًا في كل جولة. يكتب كل لاعب كلمة تبدأ بهذا الحرف في الخانات الست: اسم ولد، اسم بنت، حيوان، نبات، جماد، وبلاد، ثم يضغط «انتهيت» قبل انتهاء الوقت.' +
+            'يظهر حرف متاح عشوائيًا في كل جولة. تلعب ضد لاعبين آليين (من 1 إلى 5) يختارون كلماتهم من القاموس. اكتب كلمة تبدأ بهذا الحرف في الخانات الست: اسم ولد، اسم بنت، حيوان، نبات، جماد، وبلاد، ثم اضغط «انتهيت» قبل انتهاء الوقت. لا يجيب اللاعبون الآليون في خانة «جماد».' +
             '<br><br>' +
             '<strong>اللعب أونلاين</strong><br>' +
             'أنشئ غرفة وشارك رمزها مع أصدقائك، أو انضم إلى غرفة باستخدام الرمز. يبدأ المضيف الجولة، ويجيب جميع اللاعبين في الوقت نفسه. بعد انتهاء الجولة تظهر شاشة المراجعة؛ يضغط المضيف «الجولة التالية»، بينما ينتقل الجميع تلقائيًا إذا لم يتدخل المضيف خلال دقيقة.' +
@@ -230,15 +227,20 @@
     screenEl.innerHTML =
       '<div class="card stack">' +
         '<div>' +
-          '<span class="field-label">عدد اللاعبين</span>' +
+          '<label class="field-label" for="setupName">اسمك</label>' +
+          '<input type="text" id="setupName" class="' + (state.userNameError ? 'invalid' : '') + '" value="' + esc(s.userName) + '" maxlength="20" placeholder="اكتب اسمك">' +
+          '<div class="error-text">' + esc(state.userNameError) + '</div>' +
+        '</div>' +
+        '<div>' +
+          '<span class="field-label">عدد اللاعبين الآليين</span>' +
           '<div class="stepper">' +
-            '<button id="decPlayers" aria-label="إنقاص عدد اللاعبين">−</button>' +
-            '<span class="value" id="playersVal">' + s.playersCount + '</span>' +
-            '<button id="incPlayers" aria-label="زيادة عدد اللاعبين">+</button>' +
+            '<button id="decBots" aria-label="إنقاص عدد اللاعبين الآليين">−</button>' +
+            '<span class="value" id="botsVal">' + s.botCount + '</span>' +
+            '<button id="incBots" aria-label="زيادة عدد اللاعبين الآليين">+</button>' +
           '</div>' +
         '</div>' +
         '<div>' +
-          '<span class="field-label">مدة دور كل لاعب (ثانية)</span>' +
+          '<span class="field-label">مدة الجولة (ثانية)</span>' +
           '<div class="choice-row" id="durationRow">' +
             [30, 60, 90].map(function (d) {
               return '<div class="choice' + (s.roundDuration === d ? ' active' : '') + '" data-val="' + d + '">' + d + '</div>';
@@ -263,14 +265,13 @@
         '<button class="btn btn-ghost" id="btnBackHome" style="align-self:center;">رجوع</button>' +
       '</div>';
 
-    document.getElementById("decPlayers").onclick = function () {
-      s.playersCount = Math.max(1, s.playersCount - 1);
-      syncPlayerNamesLength();
+    document.getElementById("setupName").oninput = function (e) { s.userName = e.target.value; };
+    document.getElementById("decBots").onclick = function () {
+      s.botCount = Math.max(1, s.botCount - 1);
       renderSetup();
     };
-    document.getElementById("incPlayers").onclick = function () {
-      s.playersCount = Math.min(6, s.playersCount + 1);
-      syncPlayerNamesLength();
+    document.getElementById("incBots").onclick = function () {
+      s.botCount = Math.min(5, s.botCount + 1);
       renderSetup();
     };
     document.getElementById("durationRow").onclick = function (e) {
@@ -285,58 +286,24 @@
       s.totalRounds = parseInt(t.dataset.val, 10);
       renderSetup();
     };
-    document.getElementById("btnToPlayers").onclick = function () { goTo("players"); };
+    document.getElementById("btnToPlayers").onclick = function () {
+      if (!validateUserName()) { renderSetup(); return; }
+      s.userName = s.userName.trim();
+      savePrefs({ settings: state.settings, playerNames: [] });
+      startGame();
+    };
     document.getElementById("btnBackHome").onclick = function () { goTo("home"); };
   }
 
-  /* ---------- PLAYERS ---------- */
-  function renderPlayers() {
-    syncPlayerNamesLength();
-    if (!state.nameErrors.length) state.nameErrors = state.playerNames.map(function () { return ""; });
-
-    const rows = state.playerNames.map(function (name, i) {
-      return (
-        '<div class="player-row">' +
-          '<label class="field-label" for="playerInput' + i + '">اللاعب ' + (i + 1) + '</label>' +
-          '<input type="text" id="playerInput' + i + '" data-idx="' + i + '" class="playerInput' + (state.nameErrors[i] ? ' invalid' : '') + '" ' +
-            'value="' + esc(name) + '" maxlength="20" placeholder="اكتب الاسم">' +
-          '<div class="error-text">' + esc(state.nameErrors[i] || "") + '</div>' +
-        '</div>'
-      );
-    }).join("");
-
-    screenEl.innerHTML =
-      '<div class="card stack">' +
-        '<span class="field-label" style="font-size:16px;">أسماء اللاعبين</span>' +
-        rows +
-        '<button class="btn btn-primary" id="btnToRound">متابعة</button>' +
-        '<button class="btn btn-ghost" id="btnBackSetup" style="align-self:center;">رجوع</button>' +
-      '</div>';
-
-    Array.prototype.forEach.call(document.querySelectorAll(".playerInput"), function (input) {
-      input.oninput = function () {
-        state.playerNames[parseInt(input.dataset.idx, 10)] = input.value;
-      };
-    });
-    document.getElementById("btnBackSetup").onclick = function () { goTo("setup"); };
-    document.getElementById("btnToRound").onclick = function () {
-      if (!validatePlayerNames()) { renderPlayers(); return; }
-      savePrefs({ settings: state.settings, playerNames: state.playerNames });
-      startGame();
-    };
-  }
-
-  /* ---------- ROUND / TURN READY (3s countdown before EVERY player's turn) ---------- */
+  /* ---------- ROUND READY (3s countdown before every round) ---------- */
   function renderRoundReady() {
     if (window.beep) window.beep.reset();
-    const player = currentTurnPlayer();
-    const isFirstOfRound = state.currentPlayerIndex === 0;
     screenEl.innerHTML =
       '<div class="card center-text">' +
-        (state.tieBreaker.active && isFirstOfRound ? '<div class="tie-banner">تعادل! جولة فاصلة</div>' : '') +
+        (state.tieBreaker.active ? '<div class="tie-banner">تعادل! جولة فاصلة</div>' : '') +
         '<p class="muted">الحرف</p>' +
         '<div class="letter-hero">' + esc(state.round.letter) + '</div>' +
-        '<p class="muted" id="readyLabel">استعد يا <strong style="color:var(--ink);">' + esc(player ? player.name : "") + '</strong>...</p>' +
+        '<p class="muted" id="readyLabel">استعد…</p>' +
         '<div class="countdown-num" id="countdownNum" aria-live="polite">' + state.countdown.secondsLeft + '</div>' +
       '</div>';
   }
@@ -358,12 +325,38 @@
     }, 200);
   };
 
-  /* ---------- PLAYING (one player's own full turn) ---------- */
+  /* ---------- BOT STATUS ---------- */
+  // Marks bots as submitted once the round has progressed past their botSubmitAt fraction.
+  // Returns true if any bot changed state.
+  function syncBotSubmissions() {
+    const total = state.turn.duration || 1;
+    const progress = Math.max(0, Math.min(1, 1 - turnSecondsRemaining() / total));
+    let dirty = false;
+    state.players.forEach(function (p) {
+      if (!p.isBot || p.botSubmitted) return;
+      if (progress >= p.botSubmitAt) { p.botSubmitted = true; dirty = true; }
+    });
+    return dirty;
+  }
+  function botStripHtml() {
+    return state.players.filter(function (p) { return p.isBot; }).map(function (p) {
+      return '<div class="leaderboard-row" style="padding:6px 4px;">' +
+        '<span class="lb-name">' + esc(p.name) + '</span>' +
+        '<span class="muted">' + (p.botSubmitted ? 'أرسل ✓' : 'يكتب…') + '</span>' +
+      '</div>';
+    }).join("");
+  }
+  window.updateBotStrip = function updateBotStrip() {
+    const el = document.getElementById("botStrip");
+    if (el) el.innerHTML = botStripHtml();
+  };
+
+  /* ---------- PLAYING (the human answers; bots have already picked theirs) ---------- */
   function renderPlaying() {
-    const player = currentTurnPlayer();
-    const players = state.turnOrder;
+    const player = humanPlayer();
     const ans = state.answers[player.id];
     const remaining = turnSecondsRemaining();
+    syncBotSubmissions();
 
     screenEl.innerHTML =
       '<div class="card">' +
@@ -372,7 +365,7 @@
           '<span class="letter-chip">' + esc(state.round.letter) + '</span>' +
           '<span class="timer' + (remaining <= 10 ? ' urgent' : '') + '" id="timerDisplay" aria-live="polite">' + fmtTime(remaining) + '</span>' +
         '</div>' +
-        '<p class="center-text muted" style="margin:2px 0 14px;">دور: <strong style="color:var(--ink);">' + esc(player.name) + '</strong> (' + (state.currentPlayerIndex + 1) + ' / ' + players.length + ')</p>' +
+        '<div id="botStrip" style="margin:2px 0 14px;">' + botStripHtml() + '</div>' +
         CATEGORIES.map(function (c) {
           return (
             '<div class="answer-block">' +
@@ -391,17 +384,16 @@
 
     document.getElementById("btnFinish").onclick = function () {
       if (state.turn.locked) return;
-      showFinishConfirm(player, players);
+      showFinishConfirm();
     };
   }
 
-  function showFinishConfirm(player, players) {
-    const isLast = state.currentPlayerIndex >= players.length - 1;
+  function showFinishConfirm() {
     modalRoot.innerHTML =
       '<div class="modal-backdrop" id="finishBackdrop">' +
         '<div class="modal">' +
-          '<h3>هل أنت متأكد من إنهاء دورك؟</h3>' +
-          '<p>' + (isLast ? 'لن تتمكن من تعديل إجاباتك بعد ذلك، وستُقفل الجولة لجميع اللاعبين.' : 'لن تتمكن من تعديل إجاباتك، وسينتقل الدور الكامل للاعب التالي.') + '</p>' +
+          '<h3>هل أنت متأكد من إنهاء الجولة؟</h3>' +
+          '<p>' + 'لن تتمكن من تعديل إجاباتك بعد ذلك، وستنتهي الجولة فورًا.' + '</p>' +
           '<div class="btn-row">' +
             '<button class="btn btn-secondary" id="cancelFinish">إلغاء</button>' +
             '<button class="btn btn-primary" id="confirmFinish">انتهيت</button>' +
@@ -428,6 +420,7 @@
       el.classList.add("shake");
       setTimeout(function () { el.classList.remove("shake"); }, 200);
     }
+    if (syncBotSubmissions()) { window.updateBotStrip(); scheduleSave(); }
     if (remainingSeconds <= 0) {
       // lock inputs visually the instant time hits zero, even before finishPlayerTurn() re-renders
       Array.prototype.forEach.call(document.querySelectorAll('#screen input, #screen button'), function (n) { n.disabled = true; });
@@ -436,9 +429,7 @@
 
   /* ---------- REVIEW ---------- */
   function renderReview() {
-    const players = state.turnOrder.map(function (id) {
-      return state.players.filter(function (p) { return p.id === id; })[0];
-    });
+    const players = activeRoundPlayers();
     const rows = players.map(function (p) {
       const sc = state.roundScores[p.id];
       const total = roundTotalForPlayer(sc);
@@ -479,9 +470,7 @@
 
   /* ---------- ROUND RESULTS ---------- */
   function renderRoundResults() {
-    const players = state.turnOrder.map(function (id) {
-      return state.players.filter(function (p) { return p.id === id; })[0];
-    });
+    const players = activeRoundPlayers();
     const ranked = players.slice().sort(function (a, b) {
       return roundTotalForPlayer(state.roundScores[b.id]) - roundTotalForPlayer(state.roundScores[a.id]);
     });
@@ -515,7 +504,7 @@
   function renderFinalResults() {
     if (state.tieBreaker.active) {
       const stillTied = getTiedLeaders();
-      if (stillTied.length > 1) {
+      if (stillTied.length > 1 && stillTied.some(function (p) { return p.isHuman; })) {
         state.tieBreaker.candidateIds = stillTied.map(function (p) { return p.id; });
         renderTieAgainPrompt();
         return;
@@ -523,7 +512,7 @@
       state.tieBreaker.active = false;
     } else {
       const tied = getTiedLeaders();
-      if (tied.length > 1) {
+      if (tied.length > 1 && tied.some(function (p) { return p.isHuman; })) {
         renderTiePrompt(tied);
         return;
       }
