@@ -412,6 +412,11 @@
   function renderJoin() {
     screenEl.innerHTML = '<div class="card stack"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">الانضمام إلى غرفة</h2><label class="field-label" for="ojName">اسمك</label><input type="text" id="ojName" maxlength="20" placeholder="اكتب الاسم"><label class="field-label" for="ojCode">رمز الغرفة</label><input type="text" id="ojCode" maxlength="5" placeholder="مثال: A7K2P" style="text-transform:uppercase"><button class="btn btn-primary" id="ojGo">انضمام</button><button class="btn btn-ghost" id="ojBack">رجوع</button></div>';
     document.getElementById("ojGo").onclick = function () { joinRoom(); }; document.getElementById("ojBack").onclick = function () { route("onlineMenu"); };
+    if (window.Online && window.Online.prefillCode) {
+      document.getElementById("ojCode").value = window.Online.prefillCode;
+      window.Online.prefillCode = null;
+      document.getElementById("ojName").focus();
+    }
   }
   async function joinRoom(roomId) {
     if (o.joining) return;
@@ -494,7 +499,7 @@
   }
   function renderWaiting() {
     if (!o.room) return renderMenu();
-    screenEl.innerHTML = '<div class="card stack center-text"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">غرفة الانتظار</h2><p class="muted">رمز الغرفة</p><div style="display:flex;align-items:center;justify-content:center;gap:8px;"><div class="letter-hero" style="font-size:48px;letter-spacing:5px;">' + esc(o.room.code) + '</div><button class="btn btn-ghost" id="owCopyCode" type="button" title="نسخ الرمز" aria-label="نسخ الرمز" style="display:inline-flex;align-items:center;gap:7px;font-size:16px;padding:8px 10px;"><svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="11" height="11" rx="1.5"></rect><path d="M16 8V6.5A1.5 1.5 0 0 0 14.5 5h-7A1.5 1.5 0 0 0 6 6.5v7A1.5 1.5 0 0 0 7.5 15H8"></path></svg><span>نسخ الرمز</span></button></div><p class="muted">أرسل الرمز إلى أصدقائك</p><div id="oWaitPlayers"></div>' + (isHost() ? '<button class="btn btn-primary" id="owStart">ابدأ</button>' : '<p class="muted">بانتظار المضيف لبدء اللعبة…</p>') + '<button class="btn btn-ghost" id="owLeave">مغادرة</button></div>';
+    screenEl.innerHTML = '<div class="card stack center-text"><h2 style="font-family:Cairo,sans-serif;font-weight:800;">غرفة الانتظار</h2><p class="muted">رمز الغرفة</p><div style="display:flex;align-items:center;justify-content:center;gap:8px;"><div class="letter-hero" style="font-size:48px;letter-spacing:5px;">' + esc(o.room.code) + '</div><button class="btn btn-ghost" id="owCopyCode" type="button" title="نسخ الرمز" aria-label="نسخ الرمز" style="display:inline-flex;align-items:center;gap:7px;font-size:16px;padding:8px 10px;"><svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="11" height="11" rx="1.5"></rect><path d="M16 8V6.5A1.5 1.5 0 0 0 14.5 5h-7A1.5 1.5 0 0 0 6 6.5v7A1.5 1.5 0 0 0 7.5 15H8"></path></svg><span>نسخ الرمز</span></button></div><p class="muted">أرسل الرمز إلى أصدقائك</p><button class="btn btn-secondary" id="owShare" type="button"><span>مشاركة رابط الدعوة</span></button><div id="oWaitPlayers"></div>' + (isHost() ? '<button class="btn btn-primary" id="owStart">ابدأ</button>' : '<p class="muted">بانتظار المضيف لبدء اللعبة…</p>') + '<button class="btn btn-ghost" id="owLeave">مغادرة</button></div>';
     document.getElementById("owLeave").onclick = async function () {
       if (o.me && o.room) {
         try { await client.from("players").update({ connected: false }).eq("id", o.me.id); } catch (e) { /* best effort; the local cleanup below still runs */ }
@@ -515,6 +520,24 @@
       } catch (e) {
         label.textContent = "تعذر النسخ";
         setTimeout(function () { if (label) label.textContent = "نسخ الرمز"; }, 1600);
+      }
+    };
+    var shareButton = document.getElementById("owShare");
+    shareButton.onclick = async function () {
+      var label = shareButton.querySelector("span");
+      var url = window.location.href.split("#")[0] + "#/join/" + o.room.code;
+      function flash(text) { label.textContent = text; setTimeout(function () { if (label) label.textContent = "مشاركة رابط الدعوة"; }, 1600); }
+      try {
+        if (navigator.share) {
+          await navigator.share({ title: "اسم حيوان نبات جماد بلاد", text: "انضم إلى غرفتي في اللعبة", url: url });
+          return;
+        }
+        if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error("clipboard unavailable");
+        await navigator.clipboard.writeText(url);
+        flash("تم نسخ الرابط");
+      } catch (e) {
+        if (e && e.name === "AbortError") return;
+        flash("تعذر المشاركة");
       }
     };
     var list = document.getElementById("oWaitPlayers"); list.innerHTML = activePlayers().map(function (p) { return '<div class="leaderboard-row"><span class="lb-name">' + esc(p.name) + (p.id === o.room.host_id ? ' <span class="muted">(المضيف)</span>' : '') + '</span>' + kickButtonHTML(p) + '</div>'; }).join("");
@@ -660,7 +683,7 @@
     document.getElementById("orHome").onclick = function () { clearOnlineSession(); cleanup(); state.mode = "local"; window.goTo("home"); };
   }
 
-  window.Online = { hasSession: function () { var s = readOnlineSession(); return !!(s && s.roomCode && s.id); }, render: function (screen) { if (screen === "onlineMenu") renderMenu(); else if (screen === "onlineCreate") renderCreate(); else if (screen === "onlineJoin") renderJoin(); else if (screen === "onlinePublicRooms") renderPublicRooms(); else if (screen === "onlineWaiting") renderWaiting(); else if (screen === "onlinePlaying") renderPlaying(); else if (screen === "onlineReview") renderReview(); else if (screen === "onlineResults") { loadPlayers().then(renderResults); } } };
+  window.Online = { prefillCode: null, clearSession: function () { clearOnlineSession(); }, hasSession: function () { var s = readOnlineSession(); return !!(s && s.roomCode && s.id); }, render: function (screen) { if (screen === "onlineMenu") renderMenu(); else if (screen === "onlineCreate") renderCreate(); else if (screen === "onlineJoin") renderJoin(); else if (screen === "onlinePublicRooms") renderPublicRooms(); else if (screen === "onlineWaiting") renderWaiting(); else if (screen === "onlinePlaying") renderPlaying(); else if (screen === "onlineReview") renderReview(); else if (screen === "onlineResults") { loadPlayers().then(renderResults); } } };
   window.addEventListener("load", async function () {
     // app.js shows a "restoring" placeholder (screen "onlineResume") when the URL hash points at an online screen.
     function pendingFallback() { if (state.screen === "onlineResume" && !o.room) { state.mode = "local"; window.goTo("home"); } }
