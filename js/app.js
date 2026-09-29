@@ -92,6 +92,7 @@
   }
 
   window.goTo = function goTo(screen) {
+    if (window.beep && screen !== "playing" && screen !== "onlinePlaying") window.beep.reset();
     state.screen = screen;
     writeHash(screen);
     if (state.mode !== "online") {
