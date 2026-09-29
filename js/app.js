@@ -327,6 +327,7 @@
 
   /* ---------- ROUND / TURN READY (3s countdown before EVERY player's turn) ---------- */
   function renderRoundReady() {
+    if (window.beep) window.beep.reset();
     const player = currentTurnPlayer();
     const isFirstOfRound = state.currentPlayerIndex === 0;
     screenEl.innerHTML =
@@ -416,6 +417,7 @@
   // Called every tick from the timestamp-based interval in game.js.
   window.renderTimerOnly = function renderTimerOnly(remainingSeconds) {
     if (state.screen !== "playing") return;
+    if (window.beep) window.beep.tick(remainingSeconds);
     const el = document.getElementById("timerDisplay");
     if (!el) return;
     const becameUrgent = remainingSeconds <= 10 && !el.classList.contains("urgent");
