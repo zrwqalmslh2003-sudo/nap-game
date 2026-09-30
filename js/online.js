@@ -695,10 +695,6 @@
   }
   async function decideObjection(pending, decision) {
     if (!isHost() || !pending || !o.accepting[pending.id]) return;
-    var result = await client.from("pending_words").update({ host_decision: decision, decided_at: new Date().toISOString() }).eq("id", pending.id).is("host_decision", null).select().maybeSingle();
-    if (result.error) { delete o.accepting[pending.id]; alert(result.error.message); return; }
-    if (!result.data) { delete o.accepting[pending.id]; closeObjectionPopup(pending.id); return; }
-    pending.host_decision = decision;
     if (decision === "accepted") {
       var owner = o.players.filter(function (p) { return p.id === pending.owner_id; })[0];
       if (owner) {
@@ -711,6 +707,10 @@
         }
       }
     }
+    var result = await client.from("pending_words").update({ host_decision: decision, decided_at: new Date().toISOString() }).eq("id", pending.id).is("host_decision", null).select().maybeSingle();
+    if (result.error) { delete o.accepting[pending.id]; alert(result.error.message); return; }
+    if (!result.data) { delete o.accepting[pending.id]; closeObjectionPopup(pending.id); return; }
+    pending.host_decision = decision;
     delete o.accepting[pending.id];
     closeObjectionPopup(pending.id);
     o.objectionQueue = o.objectionQueue.filter(function (item) { return item.id !== pending.id; });
